@@ -237,6 +237,10 @@ function Login({
   const [loginNotice, setLoginNotice] = useState("")
   const [rememberMe, setRememberMe] = useState(true)
   const [activeAudience, setActiveAudience] = useState("Terrain")
+  const [contactTopic, setContactTopic] = useState("Demander une démonstration")
+  const [contactStatus, setContactStatus] = useState("")
+  const [contactError, setContactError] = useState("")
+  const [contactLoading, setContactLoading] = useState(false)
 
   useEffect(() => {
     const elements = document.querySelectorAll<HTMLElement>("[data-reveal]")
@@ -274,6 +278,40 @@ function Login({
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function submitContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setContactError("")
+    setContactStatus("")
+    setContactLoading(true)
+
+    const form = event.currentTarget
+    const values = new FormData(form)
+
+    try {
+      const result = await api.submitContact({
+        fullName: String(values.get("fullName") ?? ""),
+        email: String(values.get("email") ?? ""),
+        phone: String(values.get("phone") ?? ""),
+        company: String(values.get("company") ?? ""),
+        topic: String(values.get("topic") ?? ""),
+        message: String(values.get("message") ?? ""),
+        consent: values.get("consent") === "on",
+        website: String(values.get("website") ?? ""),
+      })
+      setContactStatus(result.message)
+      form.reset()
+      setContactTopic("Demander une démonstration")
+    } catch (cause) {
+      setContactError(
+        cause instanceof Error
+          ? cause.message
+          : "L’envoi de votre demande a échoué. Réessayez ou contactez-nous par email.",
+      )
+    } finally {
+      setContactLoading(false)
     }
   }
 
@@ -327,6 +365,7 @@ function Login({
               <a href="#solution">La solution</a>
               <a href="#offres">Offres</a>
               <a href="#demarrage">Démarrage</a>
+              <a href="#contact">Contact</a>
             </nav>
             <a className="landing-login-link" href="#connexion">Connexion <Icon name="arrow" size={15} /></a>
           </header>
@@ -345,7 +384,7 @@ function Login({
               <p>Le terrain, les équipes et les preuves de chantier réunis dans un espace clair, du premier pointage au rapport.</p>
               <div className="landing-hero__actions">
                 <a className="landing-button landing-button--lime" href="#offres">Voir les formules <Icon name="arrow" size={17} /></a>
-                <a className="landing-button landing-button--ghost" href="#demonstration">Demander une démonstration</a>
+                <a className="landing-button landing-button--ghost" href="#contact">Demander une démonstration</a>
               </div>
               <div className="landing-hero__footnote">
                 <span>01</span><p>Un espace par entreprise.<br />Des accès selon le rôle de chacun.</p>
@@ -447,7 +486,7 @@ function Login({
                   <div className="landing-price__amount"><strong>{offer.price}</strong><span>FCFA<br />/ mois</span></div>
                   <small className="landing-price__limit">{offer.limit}</small>
                   <ul>{offer.features.map((feature) => <li key={feature}><Icon name="check" size={15} />{feature}</li>)}</ul>
-                  <a href={`mailto:support@chantierconnect.ga?subject=${encodeURIComponent(`Offre ${offer.name} · Chantier Connect`)}`} className={offer.featured ? "landing-button landing-button--dark" : "landing-button landing-button--outline"}>Parler de cette formule <Icon name="arrow" size={15} /></a>
+                  <a href="#contact" onClick={() => setContactTopic("Information sur une formule")} className={offer.featured ? "landing-button landing-button--dark" : "landing-button landing-button--outline"}>Parler de cette formule <Icon name="arrow" size={15} /></a>
                 </article>
               ))}
             </div>
@@ -468,11 +507,69 @@ function Login({
           <section className="landing-manual" data-reveal>
             <div><span className="landing-eyebrow">Un accompagnement adapté à votre entreprise</span><h2>Votre offre, cadrée selon vos chantiers.</h2></div>
             <p>Nous définissons ensemble la formule, les accès et les modalités commerciales adaptées à votre équipe. Chaque étape est précisée dans une proposition claire avant le démarrage.</p>
-            <a href="mailto:support@chantierconnect.ga?subject=Parler%20de%20mon%20projet">Parler de votre projet <Icon name="arrow" size={15} /></a>
+            <a href="#contact" onClick={() => setContactTopic("Autre demande")}>Parler de votre projet <Icon name="arrow" size={15} /></a>
+          </section>
+
+          <section className="landing-contact landing-section" id="contact" data-reveal>
+            <div className="landing-section__index">05 / CONTACT</div>
+            <div className="landing-contact__layout">
+              <div className="landing-contact__intro">
+                <span className="landing-eyebrow">Parlons de vos chantiers</span>
+                <h2>Une équipe à vos côtés, dès le premier échange.</h2>
+                <p>Décrivez-nous votre besoin. Notre équipe vous recontactera pour organiser la suite.</p>
+                <a href="mailto:support@chantierconnect.ga">support@chantierconnect.ga</a>
+              </div>
+              <form className="landing-contact-card" onSubmit={submitContact}>
+                <div className="landing-contact-card__grid">
+                  <label>
+                    <span>Nom complet</span>
+                    <input name="fullName" autoComplete="name" placeholder="Votre nom" minLength={2} maxLength={120} required />
+                  </label>
+                  <label>
+                    <span>Email professionnel</span>
+                    <input name="email" type="email" autoComplete="email" placeholder="nom@entreprise.ga" maxLength={254} required />
+                  </label>
+                  <label>
+                    <span>Entreprise <small>Facultatif</small></span>
+                    <input name="company" autoComplete="organization" placeholder="Nom de votre entreprise" maxLength={160} />
+                  </label>
+                  <label>
+                    <span>Téléphone <small>Facultatif</small></span>
+                    <input name="phone" type="tel" autoComplete="tel" placeholder="+241 06 00 00 00" maxLength={30} />
+                  </label>
+                  <label className="landing-contact-card__topic">
+                    <span>Objet de votre demande</span>
+                    <select name="topic" value={contactTopic} onChange={(event) => setContactTopic(event.target.value)}>
+                      <option>Demander une démonstration</option>
+                      <option>Information sur une formule</option>
+                      <option>Autre demande</option>
+                    </select>
+                  </label>
+                  <label className="landing-contact-card__message">
+                    <span>Comment pouvons-nous vous aider ?</span>
+                    <textarea name="message" placeholder="Parlez-nous de votre entreprise et de vos besoins." minLength={10} maxLength={3000} rows={4} required />
+                  </label>
+                  <label className="landing-contact-card__honeypot" aria-hidden="true">
+                    <span>Ne pas remplir</span>
+                    <input name="website" tabIndex={-1} autoComplete="off" />
+                  </label>
+                </div>
+                <label className="landing-contact-card__consent">
+                  <input name="consent" type="checkbox" required />
+                  <span>J’accepte que mes informations soient utilisées pour répondre à ma demande. Ne transmettez aucune donnée sensible.</span>
+                </label>
+                {contactError && <p className="landing-contact-card__feedback landing-contact-card__feedback--error" role="alert">{contactError}</p>}
+                {contactStatus && <p className="landing-contact-card__feedback" role="status">{contactStatus}</p>}
+                <button className="landing-button landing-button--lime" type="submit" disabled={contactLoading}>
+                  {contactLoading ? "Envoi en cours…" : "Envoyer ma demande"} <Icon name="arrow" size={17} />
+                </button>
+                <p className="landing-contact-card__privacy">Vos coordonnées restent confidentielles et servent uniquement au suivi de votre demande.</p>
+              </form>
+            </div>
           </section>
 
           <section className="landing-faq landing-section" data-reveal>
-            <div className="landing-section__index">05 / QUESTIONS</div>
+            <div className="landing-section__index">06 / QUESTIONS</div>
             <div className="landing-faq__layout"><div><span className="landing-eyebrow">À savoir avant de commencer</span><h2>Des réponses sans détour.</h2></div><div className="landing-faq__items">
               <details><summary>Comment régler mon abonnement ?</summary><p>Les modalités et l’échéance figurent dans votre proposition commerciale et votre contrat. Le paiement en ligne dans l’application n’est pas encore activé.</p></details>
               <details><summary>Puis-je essayer avec une petite équipe ?</summary><p>Oui. La formule Découverte est configurée pour 5 utilisateurs et 2 chantiers. La durée d’essai et les conditions sont convenues lors de l’onboarding.</p></details>
@@ -481,7 +578,7 @@ function Login({
           </section>
 
           <section className="landing-signin" id="connexion">
-            <div className="landing-signin__intro"><span className="landing-eyebrow">Déjà client ?</span><h2>Votre chantier<br />vous attend.</h2><p>Connectez-vous à votre espace entreprise.</p><a href="mailto:support@chantierconnect.ga">Besoin d’aide ? Contactez-nous</a></div>
+            <div className="landing-signin__intro"><span className="landing-eyebrow">Déjà client ?</span><h2>Votre chantier<br />vous attend.</h2><p>Connectez-vous à votre espace entreprise.</p><a href="#contact">Besoin d’aide ? Contactez-nous</a></div>
             <form className="landing-auth-card" onSubmit={submit}>
               <div className="landing-auth-card__heading"><span className="landing-eyebrow">Espace sécurisé</span><h3>Connexion</h3></div>
               <label><span>Email ou numéro de téléphone</span><div className="field"><Icon name="user" /><input aria-label="Email ou numéro de téléphone" autoComplete="username" placeholder="nom@entreprise.ga" value={identifier} onChange={(event) => { setIdentifier(event.target.value); setError("") }} required /></div></label>

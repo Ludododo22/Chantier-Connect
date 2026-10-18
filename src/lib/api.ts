@@ -513,6 +513,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  async submitContact(input: {
+    fullName: string
+    email: string
+    phone: string
+    company: string
+    topic: string
+    message: string
+    consent: boolean
+    website: string
+  }) {
+    return request<{ message: string }>("/api/contact", {
+      method: "POST",
+      body: JSON.stringify(input),
+    })
+  },
+
   async login(identifier: string, password: string, rememberMe: boolean) {
     const result = await request<{ user: AuthUser }>("/api/auth/login", {
       method: "POST",

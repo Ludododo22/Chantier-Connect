@@ -8,6 +8,8 @@ import { config } from "./config.js"
 
 import { pool } from "./db.js"
 
+import contactRoutes from "./routes/contact.js"
+
 import authRoutes from "./routes/auth.js"
 
 import mobilePaymentsRoutes from "./routes/mobile-payments.js"
@@ -27,6 +29,8 @@ app.disable("x-powered-by")
 app.use(helmet())
 
 app.use(express.json({ limit: "4mb" }))
+
+app.use("/api/contact", contactRoutes)
 
 app.get("/api/health", async (_request, response) => {
   try {

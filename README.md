@@ -14,6 +14,8 @@ Dans Cloudflare, configurez `DATABASE_URL` avec l’URI PostgreSQL Supabase (poo
 
 Paramètres de build Cloudflare : commande `pnpm run build`, répertoire racine `/`, commande de déploiement `npx wrangler deploy`. Le Worker sert le frontend et traite `/api/*`; `/api/health` permet de vérifier l’API et la connexion à la base.
 
+Le formulaire public enregistre les demandes dans la table PostgreSQL `contact_requests` via `POST /api/contact`. Avant de le publier, appliquez `backend/migrations/008_contact_requests.sql` à la base Supabase (par exemple via le SQL Editor). N’exécutez pas une migration générale en production sans avoir d’abord vérifié les migrations en attente. Les soumissions sont conservées en base; aucune notification email n’est configurée, il faut donc consulter cette table pour traiter les demandes.
+
 ## État d’avancement — 18 octobre 2026
 
 **État général : MVP utilisable en pilote accompagné; mise en production commerciale générale non validée.** Le build, le smoke test des huit rôles et une simulation locale du cloisonnement entre deux entreprises ont réussi le 18 octobre 2026. La simulation utilise une base temporaire locale; la recette de préproduction et la configuration réelle de production restent à valider. Le compte rendu se trouve dans [tests-audits/audits/etat-pilote-2026-10-18.md](tests-audits/audits/etat-pilote-2026-10-18.md).
