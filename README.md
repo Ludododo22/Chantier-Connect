@@ -6,6 +6,14 @@ Plateforme BTP avec espaces séparés par entreprise et par rôle. Stack : React
 
 Voir [AGENTS.md](AGENTS.md) pour la configuration de l’environnement, PostgreSQL, les migrations et les comptes de démonstration. Ne jamais utiliser le seed de démonstration en production.
 
+## Déploiement Cloudflare Workers
+
+Le frontend Vite et l’API Express sont déployés ensemble sur Cloudflare Workers. Le build utilise le plugin Vite de Cloudflare et `wrangler.jsonc`; la commande `npx wrangler deploy` ne lance donc plus l’assistant de configuration initiale.
+
+Dans Cloudflare, configurez `DATABASE_URL` avec l’URI PostgreSQL Supabase (pooler en mode session recommandé) et `JWT_SECRET` comme secrets du Worker. La clé JWT doit être aléatoire et faire au moins 64 caractères. Le Worker active TLS pour PostgreSQL. Ne mettez pas ces valeurs dans Git ni dans les variables Vite exposées au navigateur.
+
+Paramètres de build Cloudflare : commande `pnpm run build`, répertoire racine `/`, commande de déploiement `npx wrangler deploy`. Le Worker sert le frontend et traite `/api/*`; `/api/health` permet de vérifier l’API et la connexion à la base.
+
 ## État d’avancement — 18 octobre 2026
 
 **État général : MVP utilisable en pilote accompagné; mise en production commerciale générale non validée.** Le build, le smoke test des huit rôles et une simulation locale du cloisonnement entre deux entreprises ont réussi le 18 octobre 2026. La simulation utilise une base temporaire locale; la recette de préproduction et la configuration réelle de production restent à valider. Le compte rendu se trouve dans [tests-audits/audits/etat-pilote-2026-10-18.md](tests-audits/audits/etat-pilote-2026-10-18.md).

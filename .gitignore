@@ -5,6 +5,8 @@ build/
 .cache/
 .env*
 !.env.example
+.dev.vars*
+.wrangler/
 DEMO_USERS.local.md
 .vite/
 vite.config.*.timestamp-*

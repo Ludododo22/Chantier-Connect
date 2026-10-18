@@ -8,7 +8,7 @@
     "dev:backend": "node --watch dist-server/index.js",
     "dev:full": "pnpm build:server && concurrently -k \"vite\" \"node --watch dist-server/index.js\" \"tsc --watch -p tsconfig.server.json --preserveWatchOutput\"",
     "build:server": "tsc -p tsconfig.server.json",
-    "build": "pnpm build:server && vite build",
+    "build": "pnpm build:server && tsc --noEmit -p tsconfig.worker.json && vite build",
     "start": "node dist-server/index.js",
     "db:migrate": "pnpm build:server && node dist-server/migrate.js",
     "db:seed": "pnpm build:server && node dist-server/seed.js",
@@ -32,6 +32,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.64.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
@@ -44,6 +45,7 @@
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
-    "vite": "^8.0.5"
+    "vite": "^8.0.5",
+    "wrangler": "4.151.1"
   }
 }
