@@ -345,7 +345,7 @@ function Login({
               <p>Le terrain, les équipes et les preuves de chantier réunis dans un espace clair, du premier pointage au rapport.</p>
               <div className="landing-hero__actions">
                 <a className="landing-button landing-button--lime" href="#offres">Voir les formules <Icon name="arrow" size={17} /></a>
-                <a className="landing-button landing-button--ghost" href="mailto:support@chantierconnect.ga?subject=Demande%20de%20d%C3%A9monstration">Demander une démonstration</a>
+                <a className="landing-button landing-button--ghost" href="#demonstration">Demander une démonstration</a>
               </div>
               <div className="landing-hero__footnote">
                 <span>01</span><p>Un espace par entreprise.<br />Des accès selon le rôle de chacun.</p>
@@ -371,11 +371,11 @@ function Login({
             </div>
           </section>
 
-          <section className="landing-audience landing-section" data-reveal>
-            <div className="landing-section__index">02 / POUR CHAQUE ÉQUIPE</div>
+          <section className="landing-audience landing-section" id="demonstration" data-reveal>
+            <div className="landing-section__index">02 / DÉMONSTRATION INTERACTIVE</div>
             <div className="landing-audience__layout">
               <div>
-                <span className="landing-eyebrow">Des espaces qui se répondent</span>
+                <span className="landing-eyebrow">Explorez les espaces par métier</span>
                 <h2>{audienceCopy[activeAudience]!.title}</h2>
                 <p>{audienceCopy[activeAudience]!.copy}</p>
                 <div className="landing-tabs" role="tablist" aria-label="Parcours par équipe">
