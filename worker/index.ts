@@ -26,6 +26,26 @@ export default {
       return env.ASSETS.fetch(request)
     }
 
+    const missingSecrets = [
+      !env.DATABASE_URL && "DATABASE_URL",
+      !env.JWT_SECRET && "JWT_SECRET",
+    ].filter(Boolean)
+
+    if (missingSecrets.length > 0) {
+      console.error(
+        `Secrets Worker manquants : ${missingSecrets.join(", ")}`,
+      )
+
+      return Response.json(
+        {
+          status: "error",
+          error: "Configuration API Cloudflare incomplète.",
+          missing: missingSecrets,
+        },
+        { status: 503 },
+      )
+    }
+
     processEnv.DATABASE_URL = env.DATABASE_URL
 
     processEnv.DATABASE_SSL = "true"

@@ -266,6 +266,24 @@ export interface PlatformTenant {
   siteCount: number
 }
 
+export type RegistrationRequestStatus =
+  | "Nouvelle"
+  | "En cours"
+  | "Entreprise créée"
+  | "Refusée"
+
+export interface RegistrationRequest {
+  id: string
+  companyName: string
+  adminFullName: string
+  adminEmail: string
+  phone: string | null
+  message: string
+  status: RegistrationRequestStatus
+  createdAt: string
+  updatedAt: string
+}
+
 export interface SubscriptionPlan {
   id: string
 
@@ -513,6 +531,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  async submitRegistrationRequest(input: {
+    companyName: string
+    adminFullName: string
+    adminEmail: string
+    phone: string
+    message: string
+    consent: boolean
+    website: string
+  }) {
+    return request<{ message: string }>("/api/registration-requests", {
+      method: "POST",
+      body: JSON.stringify(input),
+    })
+  },
+
   async submitContact(input: {
     fullName: string
     email: string
@@ -884,6 +917,26 @@ export const api = {
       "/api/platform/tenants",
     )
 
+    return result.data
+  },
+
+  async registrationRequests() {
+    const result = await request<{ data: RegistrationRequest[] }>(
+      "/api/platform/registration-requests",
+    )
+    return result.data
+  },
+
+  async updateRegistrationRequest(
+    id: string,
+    status: RegistrationRequestStatus,
+  ) {
+    const result = await request<{
+      data: Pick<RegistrationRequest, "id" | "status" | "updatedAt">
+    }>(`/api/platform/registration-requests/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    })
     return result.data
   },
 

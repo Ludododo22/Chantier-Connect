@@ -14,6 +14,8 @@ import {
   type PlatformInvoice,
   type PlatformSettings,
   type PlatformTenant,
+  type RegistrationRequest,
+  type RegistrationRequestStatus,
   type RecentActivity,
   type Report,
   type SitePhoto,
@@ -222,20 +224,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function Login({
-  onLogin,
-  initialError,
-}: {
-  onLogin: (user: AuthUser, rememberMe: boolean) => Promise<void>
-  initialError: string
-}) {
-  const [visible, setVisible] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [identifier, setIdentifier] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loginNotice, setLoginNotice] = useState("")
-  const [rememberMe, setRememberMe] = useState(true)
+function LandingPage() {
   const [activeAudience, setActiveAudience] = useState("Terrain")
   const [contactTopic, setContactTopic] = useState("Demander une démonstration")
   const [contactStatus, setContactStatus] = useState("")
@@ -262,24 +251,6 @@ function Login({
     elements.forEach((element) => observer.observe(element))
     return () => observer.disconnect()
   }, [])
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    setError("")
-    setLoading(true)
-    try {
-      const user = await api.login(identifier, password, rememberMe)
-      await onLogin(user, rememberMe)
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "La connexion au serveur a échoué.",
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function submitContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -367,7 +338,10 @@ function Login({
               <a href="#demarrage">Démarrage</a>
               <a href="#contact">Contact</a>
             </nav>
-            <a className="landing-login-link" href="#connexion">Connexion <Icon name="arrow" size={15} /></a>
+            <div className="landing-header__actions">
+              <a className="landing-header__signup" href="/inscription">Créer un compte</a>
+              <a className="landing-login-link" href="/connexion">Connexion <Icon name="arrow" size={15} /></a>
+            </div>
           </header>
 
           <section className="landing-hero" id="accueil">
@@ -578,23 +552,248 @@ function Login({
           </section>
 
           <section className="landing-signin" id="connexion">
-            <div className="landing-signin__intro"><span className="landing-eyebrow">Déjà client ?</span><h2>Votre chantier<br />vous attend.</h2><p>Connectez-vous à votre espace entreprise.</p><a href="#contact">Besoin d’aide ? Contactez-nous</a></div>
-            <form className="landing-auth-card" onSubmit={submit}>
-              <div className="landing-auth-card__heading"><span className="landing-eyebrow">Espace sécurisé</span><h3>Connexion</h3></div>
-              <label><span>Email ou numéro de téléphone</span><div className="field"><Icon name="user" /><input aria-label="Email ou numéro de téléphone" autoComplete="username" placeholder="nom@entreprise.ga" value={identifier} onChange={(event) => { setIdentifier(event.target.value); setError("") }} required /></div></label>
-              <label><span>Mot de passe</span><div className="field"><Icon name="lock" /><input aria-label="Mot de passe" autoComplete="current-password" placeholder="Votre mot de passe" value={password} onChange={(event) => { setPassword(event.target.value); setError("") }} type={visible ? "text" : "password"} required /><button className="field__action" type="button" onClick={() => setVisible(!visible)}>{visible ? "Masquer" : "Afficher"}</button></div></label>
-              <div className="form-options"><label className="checkbox"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /><span>Rester connecté</span></label><button className="text-button" type="button" onClick={() => setLoginNotice("La récupération automatique n’est pas activée. Contactez le support pour réinitialiser votre accès.")}>Mot de passe oublié ?</button></div>
-              {error && <div className="auth-error" role="alert"><Icon name="alert" size={16} />{error}</div>}
-              {!error && initialError && <div className="auth-error" role="alert"><Icon name="alert" size={16} />{initialError}</div>}
-              <button className="primary-button" type="submit" disabled={loading}>{loading ? "Connexion en cours…" : "Se connecter"}{!loading && <Icon name="chevron" />}</button>
-              <div className="secure-note"><Icon name="lock" size={15} /> Connexion chiffrée et sécurisée</div>
-              {loginNotice && <div className="login-notice" role="status">{loginNotice}</div>}
-            </form>
+            <div className="landing-signin__intro"><span className="landing-eyebrow">Déjà client ?</span><h2>Votre chantier<br />vous attend.</h2><p>Retrouvez votre espace entreprise sécurisé.</p></div>
+            <div className="landing-signin__actions">
+              <a className="landing-button landing-button--lime" href="/connexion">Se connecter <Icon name="arrow" size={17} /></a>
+              <a className="landing-signin__help" href="#contact">Besoin d’aide ? Contactez-nous</a>
+            </div>
           </section>
 
           <footer className="landing-footer"><a className="landing-brand" href="#accueil"><Brand /></a><span>Conçu au Gabon pour les bâtisseurs d’Afrique centrale.</span><a href="mailto:support@chantierconnect.ga">support@chantierconnect.ga</a><span>© {new Date().getFullYear()} Chantier Connect</span></footer>
         </main>
       )
+}
+
+function StandaloneLogin({
+  onLogin,
+  initialError,
+}: {
+  onLogin: (user: AuthUser, rememberMe: boolean) => Promise<void>
+  initialError: string
+}) {
+  const [identifier, setIdentifier] = useState("")
+  const [password, setPassword] = useState("")
+  const [rememberMe, setRememberMe] = useState(true)
+  const [visible, setVisible] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const user = await api.login(identifier, password, rememberMe)
+      await onLogin(user, rememberMe)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "La connexion au serveur a échoué.",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-page__story">
+        <a className="landing-brand" href="/" aria-label="Retour à l’accueil">
+          <Brand />
+        </a>
+        <div>
+          <span className="landing-eyebrow">Votre espace chantier</span>
+          <h1>Le terrain et vos équipes, toujours au même endroit.</h1>
+          <p>Connectez-vous pour retrouver vos chantiers, vos rapports et les informations de votre entreprise.</p>
+        </div>
+        <a className="auth-page__back" href="/">Retour au site</a>
+      </section>
+      <section className="auth-page__panel">
+        <form className="auth-page__card" onSubmit={(event) => void submit(event)}>
+          <div className="landing-auth-card__heading">
+            <span className="landing-eyebrow">Espace sécurisé</span>
+            <h2>Connexion</h2>
+            <p>Accédez à l’espace de votre entreprise.</p>
+          </div>
+          <label>
+            <span>Email ou numéro de téléphone</span>
+            <div className="field">
+              <Icon name="user" />
+              <input
+                autoComplete="username"
+                placeholder="nom@entreprise.ga"
+                value={identifier}
+                onChange={(event) => {
+                  setIdentifier(event.target.value)
+                  setError("")
+                }}
+                required
+              />
+            </div>
+          </label>
+          <label>
+            <span>Mot de passe</span>
+            <div className="field">
+              <Icon name="lock" />
+              <input
+                autoComplete="current-password"
+                placeholder="Votre mot de passe"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value)
+                  setError("")
+                }}
+                type={visible ? "text" : "password"}
+                required
+              />
+              <button
+                className="field__action"
+                type="button"
+                onClick={() => setVisible((current) => !current)}
+              >
+                {visible ? "Masquer" : "Afficher"}
+              </button>
+            </div>
+          </label>
+          <div className="form-options">
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              <span>Rester connecté</span>
+            </label>
+            <span className="auth-page__support">
+              Besoin d’aide ? <a href="mailto:support@chantierconnect.ga">Contactez-nous</a>
+            </span>
+          </div>
+          {(error || initialError) && (
+            <div className="auth-error" role="alert">
+              <Icon name="alert" size={16} />
+              {error || initialError}
+            </div>
+          )}
+          <button className="primary-button" type="submit" disabled={loading}>
+            {loading ? "Connexion en cours…" : "Se connecter"}
+            {!loading && <Icon name="chevron" />}
+          </button>
+          <div className="secure-note">
+            <Icon name="lock" size={15} /> Connexion chiffrée et sécurisée
+          </div>
+          <p className="auth-page__switch">
+            Pas encore client ? <a href="/inscription">Demander l’ouverture d’un espace</a>
+          </p>
+        </form>
+      </section>
+    </main>
+  )
+}
+
+function RegistrationPage() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoading(true)
+    setError("")
+    setSuccess("")
+    const form = event.currentTarget
+    const values = new FormData(form)
+
+    try {
+      const result = await api.submitRegistrationRequest({
+        companyName: String(values.get("companyName") ?? ""),
+        adminFullName: String(values.get("adminFullName") ?? ""),
+        adminEmail: String(values.get("adminEmail") ?? ""),
+        phone: String(values.get("phone") ?? ""),
+        message: String(values.get("message") ?? ""),
+        consent: values.get("consent") === "on",
+        website: String(values.get("website") ?? ""),
+      })
+      setSuccess(result.message)
+      form.reset()
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "La demande n’a pas pu être envoyée. Réessayez ou contactez-nous par email.",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="auth-page registration-page">
+      <section className="auth-page__story">
+        <a className="landing-brand" href="/" aria-label="Retour à l’accueil">
+          <Brand />
+        </a>
+        <div>
+          <span className="landing-eyebrow">Ouverture d’un espace entreprise</span>
+          <h1>Commençons par comprendre vos chantiers.</h1>
+          <p>Notre équipe étudie votre demande et vous accompagne pour définir l’espace adapté à votre entreprise.</p>
+          <ol className="registration-steps">
+            <li><span>01</span> Vous envoyez votre demande</li>
+            <li><span>02</span> Notre équipe vous recontacte</li>
+            <li><span>03</span> L’espace est créé après validation</li>
+          </ol>
+        </div>
+        <a className="auth-page__back" href="/">Retour au site</a>
+      </section>
+      <section className="auth-page__panel">
+        <form className="auth-page__card registration-card" onSubmit={(event) => void submit(event)}>
+          <div className="landing-auth-card__heading">
+            <span className="landing-eyebrow">Préinscription</span>
+            <h2>Parlez-nous de votre entreprise</h2>
+            <p>Ce formulaire ne crée pas encore de compte ni d’entreprise.</p>
+          </div>
+          <div className="registration-card__grid">
+            <label>
+              <span>Nom de l’entreprise</span>
+              <input name="companyName" autoComplete="organization" minLength={2} maxLength={160} required />
+            </label>
+            <label>
+              <span>Votre nom complet</span>
+              <input name="adminFullName" autoComplete="name" minLength={2} maxLength={120} required />
+            </label>
+            <label>
+              <span>Email professionnel</span>
+              <input name="adminEmail" type="email" autoComplete="email" maxLength={254} required />
+            </label>
+            <label>
+              <span>Téléphone <small>Facultatif</small></span>
+              <input name="phone" type="tel" autoComplete="tel" maxLength={30} />
+            </label>
+            <label className="registration-card__message">
+              <span>Présentez votre besoin</span>
+              <textarea name="message" minLength={10} maxLength={2000} rows={4} required />
+            </label>
+            <label className="registration-card__honeypot" aria-hidden="true">
+              <span>Ne pas remplir</span>
+              <input name="website" tabIndex={-1} autoComplete="off" />
+            </label>
+          </div>
+          <label className="registration-card__consent">
+            <input name="consent" type="checkbox" required />
+            <span>J’accepte l’utilisation de ces informations pour étudier et traiter ma demande.</span>
+          </label>
+          {error && <p className="landing-contact-card__feedback landing-contact-card__feedback--error" role="alert">{error}</p>}
+          {success && <p className="landing-contact-card__feedback" role="status">{success}</p>}
+          <button className="landing-button landing-button--lime" type="submit" disabled={loading}>
+            {loading ? "Envoi en cours…" : "Envoyer ma demande"} <Icon name="arrow" size={17} />
+          </button>
+          <p className="registration-card__switch">
+            Déjà un compte ? <a href="/connexion">Se connecter</a>
+          </p>
+        </form>
+      </section>
+    </main>
+  )
 }
 
 const sectionIcons: Record<string, IconName> = {
@@ -1377,6 +1576,7 @@ function ModuleView({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [paymentDossiers, setPaymentDossiers] = useState<PaymentDossier[]>([])
   const [platformTenants, setPlatformTenants] = useState<PlatformTenant[]>([])
+  const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequest[]>([])
   const [platformInvoices, setPlatformInvoices] = useState<PlatformInvoice[]>([])
   const [invoiceToPrint, setInvoiceToPrint] = useState<PlatformInvoice | null>(null)
   const [subscriptionPlans, setSubscriptionPlans] =
@@ -1447,10 +1647,12 @@ function ModuleView({
                       ? Promise.all([
                           api.platformTenants(),
                           api.subscriptionPlans(),
-                        ]).then(([tenants, plans]) => {
+                          api.registrationRequests(),
+                        ]).then(([tenants, plans, requests]) => {
                           if (activeRequest) {
                             setPlatformTenants(tenants)
                             setSubscriptionPlans(plans)
+                            setRegistrationRequests(requests)
                           }
                         })
                       : active === "Abonnements"
@@ -1623,6 +1825,27 @@ function ModuleView({
         error instanceof Error
           ? error.message
           : "L’abonnement n’a pas pu être mis à jour.",
+      )
+    }
+  }
+
+  async function updateRegistrationRequestStatus(
+    request: RegistrationRequest,
+    status: RegistrationRequestStatus,
+  ) {
+    try {
+      const updated = await api.updateRegistrationRequest(request.id, status)
+      setRegistrationRequests((current) =>
+        current.map((item) =>
+          item.id === request.id ? { ...item, ...updated } : item,
+        ),
+      )
+      notify(`Demande de ${request.companyName} mise à jour.`)
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Le statut de la demande n’a pas pu être mis à jour.",
       )
     }
   }
@@ -3576,6 +3799,70 @@ function ModuleView({
             </p>
           </div>
         </div>
+        <section className="data-panel registration-request-panel">
+          <div className="registration-request-panel__heading">
+            <div>
+              <span className="eyebrow">Préinscriptions publiques</span>
+              <h2>Demandes d’ouverture d’espace</h2>
+              <p>Une demande ne crée aucun accès. Vérifiez-la puis créez l’entreprise et son administrateur.</p>
+            </div>
+            <strong>{registrationRequests.filter((item) => item.status === "Nouvelle").length} nouvelle(s)</strong>
+          </div>
+          {loadingData ? (
+            <p role="status">Chargement des demandes…</p>
+          ) : null}
+          {!loadingData && !dataError && registrationRequests.length === 0 ? (
+            <p>Aucune demande d’inscription pour le moment.</p>
+          ) : null}
+          <div className="registration-request-list">
+            {registrationRequests.map((request) => (
+              <article className="registration-request" key={request.id}>
+                <div className="registration-request__identity">
+                  <strong>{request.companyName}</strong>
+                  <span>{request.adminFullName} · {request.adminEmail}</span>
+                  {request.phone && <span>{request.phone}</span>}
+                </div>
+                <p>{request.message}</p>
+                <small>Reçue le {new Date(request.createdAt).toLocaleDateString("fr-FR")}</small>
+                <div className="registration-request__actions">
+                  <select
+                    aria-label={`Statut de la demande de ${request.companyName}`}
+                    value={request.status}
+                    onChange={(event) =>
+                      void updateRegistrationRequestStatus(
+                        request,
+                        event.target.value as RegistrationRequestStatus,
+                      )
+                    }
+                  >
+                    {(["Nouvelle", "En cours", "Entreprise créée", "Refusée"] as const).map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={request.status === "Entreprise créée" || request.status === "Refusée"}
+                    onClick={() =>
+                      openAction(
+                        "tenant",
+                        `Créer l’espace de ${request.companyName}`,
+                        request.id,
+                        {
+                          "Raison sociale": request.companyName,
+                          "Nom de l’administrateur": request.adminFullName,
+                          "Email administrateur": request.adminEmail,
+                        },
+                      )
+                    }
+                  >
+                    Créer l’entreprise
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
         <div className="cash-metrics editor-metrics">
           <div>
             <span>Entreprises actives</span>
@@ -5171,6 +5458,25 @@ function Dashboard({
         adminEmail: values["Email administrateur"] ?? "",
         temporaryPassword: values["Mot de passe provisoire"] ?? "",
       })
+      if (action.id) {
+        try {
+          const updatedRequest = await api.updateRegistrationRequest(
+            action.id,
+            "Entreprise créée",
+          )
+          setRegistrationRequests((current) =>
+            current.map((item) =>
+              item.id === action.id ? { ...item, ...updatedRequest } : item,
+            ),
+          )
+        } catch {
+          setToast(
+            `Entreprise ${tenant.name} créée, mais la demande n’a pas été mise à jour. Vérifiez-la dans le back-office.`,
+          )
+          setDataRevision((revision) => revision + 1)
+          return
+        }
+      }
       setDataRevision((revision) => revision + 1)
       setToast(
         `Entreprise ${tenant.name} créée en essai. Le compte administrateur ${values["Email administrateur"]} est prêt.`,
@@ -5518,14 +5824,24 @@ export default function App() {
     )
   }
 
-  return authenticatedUser ? (
+  if (authenticatedUser) {
+    return (
     <Dashboard
       key={authenticatedUser.id}
       user={authenticatedUser}
       onLogout={logout}
       onUserUpdate={setAuthenticatedUser}
     />
-  ) : (
-    <Login onLogin={login} initialError={authError} />
-  )
+    )
+  }
+
+  if (window.location.pathname === "/inscription") {
+    return <RegistrationPage />
+  }
+
+  if (window.location.pathname === "/connexion") {
+    return <StandaloneLogin onLogin={login} initialError={authError} />
+  }
+
+  return <LandingPage />
 }

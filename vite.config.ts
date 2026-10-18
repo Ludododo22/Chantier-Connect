@@ -8,11 +8,13 @@ import { cloudflare } from "@cloudflare/vite-plugin"
 
 import path from "node:path"
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     tailwindcss(),
-    cloudflare({ viteEnvironment: { name: "worker" } }),
+    ...(mode === "production"
+      ? [cloudflare({ viteEnvironment: { name: "worker" } })]
+      : []),
   ],
 
   environments: {
@@ -46,4 +48,4 @@ export default defineConfig({
 
     port: Number(process.env.VITE_PORT) || 8443,
   },
-})
+}))

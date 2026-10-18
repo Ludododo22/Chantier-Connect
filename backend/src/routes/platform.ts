@@ -48,6 +48,10 @@ const subscriptionSchema = z.object({
   renewsAt: z.iso.date().nullable(),
 })
 
+const registrationRequestStatusSchema = z.object({
+  status: z.enum(["Nouvelle", "En cours", "Entreprise créée", "Refusée"]),
+})
+
 const invoiceSchema = z.object({
   tenantId: z.uuid(),
   description: z.string().trim().min(2).max(180),
@@ -143,6 +147,50 @@ router.get("/tenants", async (_request, response) => {
   )
 
   response.json({ data: result.rows })
+})
+
+router.get("/registration-requests", async (_request, response) => {
+  const result = await pool.query(
+    `SELECT id, company_name AS "companyName",
+            admin_full_name AS "adminFullName", admin_email AS "adminEmail",
+            phone, message, status, created_at AS "createdAt",
+            updated_at AS "updatedAt"
+     FROM registration_requests
+     ORDER BY CASE status
+                WHEN 'Nouvelle' THEN 0
+                WHEN 'En cours' THEN 1
+                ELSE 2
+              END,
+              created_at DESC`,
+  )
+
+  response.json({ data: result.rows })
+})
+
+router.patch("/registration-requests/:id", async (request, response) => {
+  const id = z.uuid().safeParse(request.params.id)
+  const parsed = registrationRequestStatusSchema.safeParse(request.body)
+
+  if (!id.success || !parsed.success) {
+    response.status(400).json({ error: "Demande ou statut invalide." })
+    return
+  }
+
+  const editor = (request as AuthenticatedRequest).authUser
+  const result = await pool.query(
+    `UPDATE registration_requests
+     SET status = $2, reviewed_by = $3, updated_at = now()
+     WHERE id = $1
+     RETURNING id, status, updated_at AS "updatedAt"`,
+    [id.data, parsed.data.status, editor.id],
+  )
+
+  if (!result.rowCount) {
+    response.status(404).json({ error: "Demande introuvable." })
+    return
+  }
+
+  response.json({ data: result.rows[0] })
 })
 
 router.get("/invoices", async (_request, response) => {

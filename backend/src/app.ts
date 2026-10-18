@@ -10,6 +10,8 @@ import { pool } from "./db.js"
 
 import contactRoutes from "./routes/contact.js"
 
+import registrationRequestRoutes from "./routes/registration-requests.js"
+
 import authRoutes from "./routes/auth.js"
 
 import mobilePaymentsRoutes from "./routes/mobile-payments.js"
@@ -31,6 +33,8 @@ app.use(helmet())
 app.use(express.json({ limit: "4mb" }))
 
 app.use("/api/contact", contactRoutes)
+
+app.use("/api/registration-requests", registrationRequestRoutes)
 
 app.get("/api/health", async (_request, response) => {
   try {

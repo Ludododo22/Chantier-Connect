@@ -10,11 +10,15 @@ Voir [AGENTS.md](AGENTS.md) pour la configuration de l’environnement, PostgreS
 
 Le frontend Vite et l’API Express sont déployés ensemble sur Cloudflare Workers. Le build utilise le plugin Vite de Cloudflare et `wrangler.jsonc`; la commande `npx wrangler deploy` ne lance donc plus l’assistant de configuration initiale.
 
-Dans Cloudflare, configurez `DATABASE_URL` avec l’URI PostgreSQL Supabase (pooler en mode session recommandé) et `JWT_SECRET` comme secrets du Worker. La clé JWT doit être aléatoire et faire au moins 64 caractères. Le Worker active TLS pour PostgreSQL. Ne mettez pas ces valeurs dans Git ni dans les variables Vite exposées au navigateur.
+Le Worker Cloudflare sert aussi l’API (`/api/*`) : l’API de production ne dépend pas du serveur local ni de son fichier `.env`. Dans **Cloudflare Dashboard → Workers & Pages → `chantier-connect` → Settings → Variables and Secrets → Add**, créez les secrets runtime `DATABASE_URL` et `JWT_SECRET`, puis redéployez le Worker. `DATABASE_URL` doit être la chaîne de connexion PostgreSQL Supabase (utilisez de préférence le pooler Supabase en mode session, port 5432) et `JWT_SECRET` une valeur aléatoire d’au moins 64 caractères. Le Worker active TLS pour PostgreSQL. Ne mettez pas ces secrets dans `wrangler.jsonc`, les variables Vite, les variables de build ou Git. Une configuration du serveur MCP Supabase ne configure pas les secrets runtime de l’application Cloudflare.
+
+Après le déploiement, ouvrez `https://<votre-domaine>/api/health` : une réponse `{"status":"ok","database":"connected"}` confirme que l’API Cloudflare joint Supabase. Si des secrets manquent, l’endpoint indique leurs noms dans sa réponse d’erreur (sans révéler leurs valeurs). En local, `pnpm dev:full` sert l’API Express via le proxy Vite et utilise `DATABASE_SSL` du fichier `.env`; le Worker Cloudflare traite l’API en production.
 
 Paramètres de build Cloudflare : commande `pnpm run build`, répertoire racine `/`, commande de déploiement `npx wrangler deploy`. Le Worker sert le frontend et traite `/api/*`; `/api/health` permet de vérifier l’API et la connexion à la base.
 
 Le formulaire public enregistre les demandes dans la table PostgreSQL `contact_requests` via `POST /api/contact`. Avant de le publier, appliquez `backend/migrations/008_contact_requests.sql` à la base Supabase (par exemple via le SQL Editor). N’exécutez pas une migration générale en production sans avoir d’abord vérifié les migrations en attente. Les soumissions sont conservées en base; aucune notification email n’est configurée, il faut donc consulter cette table pour traiter les demandes.
+
+Les pages dédiées `/connexion` et `/inscription` conservent le modèle de provisionnement existant. Une préinscription est stockée dans `registration_requests`; elle ne crée ni entreprise ni compte. Seul un Éditeur peut examiner la demande dans « Entreprises », puis créer l’entreprise et son compte administrateur avec le flux existant. Appliquez `backend/migrations/009_registration_requests.sql` avant d’activer l’inscription sur la base cible. L’administrateur d’entreprise peut ensuite créer les membres et attribuer leurs rôles depuis « Équipe ».
 
 ## État d’avancement — 18 octobre 2026
 
