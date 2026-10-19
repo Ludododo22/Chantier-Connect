@@ -462,7 +462,7 @@ export interface PaymentDossierSummary {
   amountFcfa: string
 }
 
-export const managedRoles: Array<{ value: ManagedRole label: string }> = [
+export const managedRoles: Array<{ value: ManagedRole; label: string }> = [
   { value: "CONDUCTEUR", label: "Conducteur de travaux" },
 
   { value: "CHEF_CHANTIER", label: "Chef de chantier" },
@@ -634,7 +634,7 @@ export const api = {
     return result.data
   },
 
-  async createSite(input: { name: string location: string }) {
+  async createSite(input: { name: string; location: string }) {
     await request<{ data: Site }>("/api/sites", {
       method: "POST",
 
@@ -739,7 +739,11 @@ export const api = {
   async updateTeamMember(
     id: string,
 
-    input: { role: ManagedRole assignedSite: string | null active: boolean },
+    input: {
+      role: ManagedRole
+      assignedSite: string | null
+      active: boolean
+    },
   ) {
     const result = await request<{ data: TeamMember }>(
       `/api/team/${encodeURIComponent(id)}`,
@@ -802,7 +806,7 @@ export const api = {
     return result.data
   },
 
-  async clockIn(location?: { latitude: number longitude: number }) {
+  async clockIn(location?: { latitude: number; longitude: number }) {
     const result = await request<{ data: AttendanceRecord }>(
       "/api/attendance/clock-in",
       {
@@ -815,7 +819,7 @@ export const api = {
     return result.data
   },
 
-  async clockOut(location?: { latitude: number longitude: number }) {
+  async clockOut(location?: { latitude: number; longitude: number }) {
     const result = await request<{ data: AttendanceRecord }>(
       "/api/attendance/clock-out",
       {
@@ -829,7 +833,7 @@ export const api = {
   },
 
   async finance() {
-    return request<{ data: FinanceEntry[] summary: FinanceSummary }>(
+    return request<{ data: FinanceEntry[]; summary: FinanceSummary }>(
       "/api/finance",
     )
   },
@@ -869,7 +873,10 @@ export const api = {
   },
 
   async paymentDossiers() {
-    return request<{ data: PaymentDossier[] summary: PaymentDossierSummary[] }>(
+    return request<{
+      data: PaymentDossier[]
+      summary: PaymentDossierSummary[]
+    }>(
       "/api/payments",
     )
   },

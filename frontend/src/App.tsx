@@ -39,7 +39,7 @@ type PendingAction = {
   initialValues?: Record<string, string>
 } | null
 
-function Icon({ name, size = 20 }: { name: IconName size?: number }) {
+function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
     alert: (
       <>

@@ -3,7 +3,5 @@ export interface Env {
     fetch(request: Request): Promise<Response>
   }
 
-  DATABASE_URL?: string
-
-  JWT_SECRET?: string
+  API_ORIGIN?: string
 }

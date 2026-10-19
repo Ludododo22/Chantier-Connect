@@ -2,6 +2,8 @@ import { readdir, readFile } from "node:fs/promises"
 
 import path from "node:path"
 
+import { fileURLToPath } from "node:url"
+
 import "dotenv/config"
 
 import { pool } from "./db.js"
@@ -21,10 +23,8 @@ async function migrate() {
        )`,
     )
 
-    const migrationsDirectory = path.join(
-      process.cwd(),
-      "backend",
-      "migrations",
+    const migrationsDirectory = fileURLToPath(
+      new URL("../migrations/", import.meta.url),
     )
 
     const files = (await readdir(migrationsDirectory))

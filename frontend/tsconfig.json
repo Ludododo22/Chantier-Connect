@@ -18,6 +18,5 @@
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"],
-  "exclude": ["backend", "dist-server"]
+  "include": ["src", "vite.config.ts"]
 }

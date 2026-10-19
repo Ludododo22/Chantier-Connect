@@ -1,42 +1,36 @@
 # Chantier Connect
 
-React + Vite + Tailwind CSS application.
+The repository contains two independently deployable projects:
 
-## Development Server
+- `frontend/` - React 19, Vite 8, Tailwind CSS v4, and a Cloudflare Worker that proxies `/api/*` to the Node backend.
+- `backend/` - Node/Express API, PostgreSQL access, migrations, and seed tooling.
 
-- Copy the local values into `.env`; never commit that file or put real secrets in `.env.example`.
-- Create a PostgreSQL database and configure `DATABASE_URL` and a random `JWT_SECRET`.
-- Run `pnpm db:migrate` and `pnpm db:seed` for local development data.
-- Run `pnpm dev:full` to start the Vite frontend (port 8443) and Express API (port 3001).
-- Run `pnpm build` to type-check the backend and build the frontend.
+## Development
 
-## Project Structure
+- Configure `backend/.env` from `backend/.env.example`. Never commit `.env` or put real secrets in `.env.example`.
+- Run `npm install`, `npm run migrate`, and `npm run dev` from `backend/`.
+- Run `npm install` and `npm run dev` from `frontend/` in a separate terminal.
+- Vite's local API proxy defaults to `http://127.0.0.1:3001`.
+- Build independently with `npm run build` in each project. The root workspace also supports `pnpm build`.
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React and Tailwind CSS v4 plugins and the `@` alias for `src`
-- `backend/src/` - Express API, authentication, and tenant-scoped business routes
-- `backend/migrations/` - PostgreSQL schema migrations
-- `.env.example` - Local backend configuration template without credentials
+## Frontend
 
-## Dependencies
+- `frontend/src/main.tsx` mounts `frontend/src/App.tsx` into the `#root` element.
+- `frontend/src/index.css` imports Tailwind CSS v4; global font declarations belong there.
+- `frontend/index.html` is the Vite HTML shell.
+- `frontend/vite.config.ts` configures Vite, React, Tailwind, and the local API proxy.
+- Cloudflare's runtime variable `API_ORIGIN` must be the backend's HTTPS origin. Do not configure database credentials in the frontend.
 
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
+## Backend
 
-## Styling
+- `backend/src/` contains the Express API, authentication, and tenant-scoped routes.
+- `backend/migrations/` contains the ordered PostgreSQL migrations.
+- `DATABASE_URL`, `DATABASE_SSL`, and `JWT_SECRET` belong only in the backend runtime environment.
+- Never run the demo seed against production.
 
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import "tailwindcss";`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This project does not need a Tailwind config file or PostCSS config.
+## Styling and quality
 
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
-
-## Code quality
-
-- Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.
+- Use Tailwind CSS v4 utilities in JSX or theme/global rules in `frontend/src/index.css`; do not add Tailwind or PostCSS config files.
+- Use double quotes for strings containing apostrophes, or escape apostrophes in single-quoted strings.
 - Ensure JSX tags are closed and braces are balanced.
 - Export components as default exports.

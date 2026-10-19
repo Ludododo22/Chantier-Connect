@@ -1,7 +1,5 @@
 import { z } from "zod"
 
-import { getBackendRuntimeEnvironment } from "./runtime-environment.js"
-
 const environmentSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -24,7 +22,7 @@ const environmentSchema = z.object({
     .min(32, "JWT_SECRET doit contenir au moins 32 caractères."),
 })
 
-const result = environmentSchema.safeParse(getBackendRuntimeEnvironment())
+const result = environmentSchema.safeParse(process.env)
 
 if (!result.success) {
   console.error(
