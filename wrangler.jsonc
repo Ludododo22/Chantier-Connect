@@ -2,8 +2,11 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "chantier-connect",
   "main": "./worker/index.ts",
-  "compatibility_date": "2026-10-18",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
   "upload_source_maps": true,
   "assets": {
     "binding": "ASSETS",
