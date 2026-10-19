@@ -48,6 +48,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="M12 16.5h.01" />
       </>
     ),
+    arrow: <path d="M5 12h14m-6-6 6 6-6 6" />,
     building: (
       <>
         <path d="M4 21V5l8-3v19" />
@@ -431,7 +432,7 @@ function LandingPage() {
                       <div><small>ÉQUIPE MOBILISÉE</small><strong>24</strong><span>sur 30 comptes</span></div>
                     </div>
                     <div className="direction-preview__projects"><div className="direction-preview__projects-title"><strong>Avancement des chantiers</strong><span>Voir les chantiers <Icon name="arrow" size={12} /></span></div>{[["Résidence Les Palmiers", 68], ["École Nzeng-Ayong", 42], ["Centre médical Owendo", 31]].map(([name, value]) => <div className="direction-preview__project" key={name}><span>{name}</span><div><i style={{ width: `${value}%` }} /></div><b>{value}%</b></div>)}</div>
-                    <div className="direction-preview__footer"><Icon name="users" size={13} /> Rapports et équipes consolidés par chantier</div>
+                    <div className="direction-preview__footer"><Icon name="team" size={13} /> Rapports et équipes consolidés par chantier</div>
                   </div>
                 ) : (
                   <div className="finance-preview">
@@ -1092,6 +1093,8 @@ function ActionDialog({
   const actionHelpText = actionGuideByKind[action.kind]
 
   async function submit(event: FormEvent<HTMLFormElement>) {
+    if (!action) return
+
     event.preventDefault()
     setSubmitError("")
     setSubmitting(true)
@@ -1535,13 +1538,20 @@ function ModuleView({
   notify,
   onProfileUpdate,
   dataRevision,
+  onDataChange,
 }: {
   active: string
   user: AuthUser
-  openAction: (kind: ActionKind, title: string) => void
+  openAction: (
+    kind: ActionKind,
+    title: string,
+    id?: string,
+    initialValues?: Record<string, string>,
+  ) => void
   notify: (message: string) => void
   onProfileUpdate: (user: AuthUser) => void
   dataRevision: number
+  onDataChange: () => void
 }) {
   const [taskFilter, setTaskFilter] = useState("Toutes")
   const [saved, setSaved] = useState(false)
@@ -1721,14 +1731,12 @@ function ModuleView({
       if (openShift) {
         const result = await api.clockOut()
         setAttendance((current) =>
-          current.map((record) =>
-            record.id === result.data.id ? result.data : record,
-          ),
+          current.map((record) => (record.id === result.id ? result : record)),
         )
         notify("Départ enregistré.")
       } else {
         const result = await api.clockIn()
-        setAttendance((current) => [result.data, ...current])
+        setAttendance((current) => [result, ...current])
         notify("Arrivée enregistrée.")
       }
     } catch (error) {
@@ -1751,13 +1759,13 @@ function ModuleView({
           item.id === entry.id
             ? {
                 ...item,
-                status: result.data.status,
-                occurredAt: result.data.occurredAt,
+                status: result.status,
+                occurredAt: result.occurredAt,
               }
             : item,
         ),
       )
-      setDataRevision((revision) => revision + 1)
+      onDataChange()
       notify("Opération financière enregistrée comme réalisée.")
     } catch (error) {
       notify(
@@ -5460,15 +5468,7 @@ function Dashboard({
       })
       if (action.id) {
         try {
-          const updatedRequest = await api.updateRegistrationRequest(
-            action.id,
-            "Entreprise créée",
-          )
-          setRegistrationRequests((current) =>
-            current.map((item) =>
-              item.id === action.id ? { ...item, ...updatedRequest } : item,
-            ),
-          )
+          await api.updateRegistrationRequest(action.id, "Entreprise créée")
         } catch {
           setToast(
             `Entreprise ${tenant.name} créée, mais la demande n’a pas été mise à jour. Vérifiez-la dans le back-office.`,
@@ -5707,6 +5707,9 @@ function Dashboard({
               notify={setToast}
               onProfileUpdate={onUserUpdate}
               dataRevision={dataRevision}
+              onDataChange={() =>
+                setDataRevision((revision) => revision + 1)
+              }
             />
           )}
         </main>
