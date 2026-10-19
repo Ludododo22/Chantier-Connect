@@ -4,6 +4,10 @@ import { spawnSync } from "node:child_process"
 
 const configModule = new URL("../../dist-server/config.js", import.meta.url)
   .href
+const runtimeEnvironmentModule = new URL(
+  "../../dist-server/runtime-environment.js",
+  import.meta.url,
+).href
 
 const importConfig = `import(${JSON.stringify(configModule)})`
 
@@ -35,6 +39,46 @@ function loadProductionConfig({ databaseSsl, jwtSecret }) {
   )
 }
 
+function loadProductionConfigFromRuntimeEnvironment({
+  databaseUrl,
+  jwtSecret,
+}) {
+  const setupRuntimeEnvironment = `
+    const { setBackendRuntimeEnvironment } = await import(${JSON.stringify(runtimeEnvironmentModule)});
+    setBackendRuntimeEnvironment({
+      DATABASE_URL: ${JSON.stringify(databaseUrl)},
+      DATABASE_SSL: "true",
+      JWT_SECRET: ${JSON.stringify(jwtSecret)},
+      NODE_ENV: "production",
+    });
+    await import(${JSON.stringify(configModule)});
+  `
+
+  return spawnSync(
+    process.execPath,
+
+    ["--input-type=module", "--eval", setupRuntimeEnvironment],
+
+    {
+      cwd: process.cwd(),
+
+      encoding: "utf8",
+
+      env: {
+        ...process.env,
+
+        NODE_ENV: "",
+
+        DATABASE_URL: "",
+
+        DATABASE_SSL: "",
+
+        JWT_SECRET: "",
+      },
+    },
+  )
+}
+
 const secureSecret = "aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW1xY"
 
   .repeat(2)
@@ -59,6 +103,27 @@ assert.ok(
   !valid.stdout.includes(secureSecret) && !valid.stderr.includes(secureSecret),
 
   "Le contrôle ne doit jamais afficher la clé JWT.",
+)
+
+const runtimeEnvironment = loadProductionConfigFromRuntimeEnvironment({
+  databaseUrl: databaseUrl,
+
+  jwtSecret: secureSecret,
+})
+
+assert.equal(
+  runtimeEnvironment.status,
+
+  0,
+
+  "La configuration de production injectée explicitement doit être acceptée.",
+)
+
+assert.ok(
+  !runtimeEnvironment.stdout.includes(secureSecret) &&
+    !runtimeEnvironment.stderr.includes(secureSecret),
+
+  "Le contrôle ne doit jamais afficher la clé JWT injectée.",
 )
 
 const insecureDatabase = loadProductionConfig({

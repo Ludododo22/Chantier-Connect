@@ -2,7 +2,7 @@ import { httpServerHandler } from "cloudflare:node"
 
 import { createServer } from "node:http"
 
-import { env as processEnv } from "node:process"
+import { setBackendRuntimeEnvironment } from "../backend/src/runtime-environment.js"
 
 import type { Env } from "./types.js"
 
@@ -26,15 +26,15 @@ export default {
       return env.ASSETS.fetch(request)
     }
 
+    const databaseUrl = env.DATABASE_URL
+    const jwtSecret = env.JWT_SECRET
     const missingSecrets = [
-      !env.DATABASE_URL && "DATABASE_URL",
-      !env.JWT_SECRET && "JWT_SECRET",
+      !databaseUrl && "DATABASE_URL",
+      !jwtSecret && "JWT_SECRET",
     ].filter(Boolean)
 
     if (missingSecrets.length > 0) {
-      console.error(
-        `Secrets Worker manquants : ${missingSecrets.join(", ")}`,
-      )
+      console.error(`Secrets Worker manquants : ${missingSecrets.join(", ")}`)
 
       return Response.json(
         {
@@ -46,13 +46,12 @@ export default {
       )
     }
 
-    processEnv.DATABASE_URL = env.DATABASE_URL
-
-    processEnv.DATABASE_SSL = "true"
-
-    processEnv.JWT_SECRET = env.JWT_SECRET
-
-    processEnv.NODE_ENV = "production"
+    setBackendRuntimeEnvironment({
+      DATABASE_URL: databaseUrl,
+      DATABASE_SSL: "true",
+      JWT_SECRET: jwtSecret,
+      NODE_ENV: "production",
+    })
 
     const handler = await getApiHandler()
 
