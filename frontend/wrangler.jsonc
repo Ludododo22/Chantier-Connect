@@ -4,6 +4,9 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-10-19",
   "upload_source_maps": true,
+  "vars": {
+    "API_ORIGIN": "https://chantier-connect-backend.onrender.com"
+  },
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",

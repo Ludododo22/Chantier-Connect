@@ -5771,7 +5771,7 @@ export default function App() {
         .catch(() => {
           if (requestId !== syncRequest) return
           setAuthError(
-            "Le serveur est indisponible. Vérifiez le démarrage de l’API et la connexion PostgreSQL.",
+            "La vérification de votre session a échoué. Réessayez dans quelques instants.",
           )
         })
     }
@@ -5795,7 +5795,7 @@ export default function App() {
       .catch(() => {
         if (active) {
           setAuthError(
-            "Le serveur est indisponible. Vérifiez le démarrage de l’API et la connexion PostgreSQL.",
+            "La vérification de votre session a échoué. Réessayez dans quelques instants.",
           )
         }
       })

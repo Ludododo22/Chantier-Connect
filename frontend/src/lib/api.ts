@@ -502,7 +502,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     if (error instanceof TypeError) {
       throw new ApiError(
-        "Impossible de joindre le serveur. Vérifiez qu’il est démarré et réessayez.",
+        "Le service est temporairement indisponible. Réessayez dans quelques instants.",
         0,
       )
     }
@@ -515,14 +515,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message =
-      typeof body === "object" &&
+      response.status >= 500
+        ? "Le service est temporairement indisponible. Réessayez dans quelques instants."
+        : typeof body === "object" &&
       body !== null &&
       "error" in body &&
       typeof body.error === "string"
         ? body.error
-        : response.status >= 500
-          ? "Le serveur est temporairement indisponible. Réessayez dans quelques secondes."
-          : "Le serveur n’a pas pu traiter la demande."
+        : "La demande n’a pas pu être traitée. Vérifiez les informations saisies et réessayez."
 
     throw new ApiError(message, response.status)
   }

@@ -24,7 +24,7 @@ Vite sert l’interface sur le port 8443 et relaie `/api/*` vers `http://127.0.0
 ## Déploiement
 
 1. Déployez [backend/](backend/) sur un hébergeur Node avec `npm install`, `npm run build` et `npm start`. Configurez les variables runtime `DATABASE_URL`, `DATABASE_SSL=true`, `JWT_SECRET` (au moins 64 caractères aléatoires) et `NODE_ENV=production`. Utilisez l’URL PostgreSQL Supabase, de préférence son pooler en mode session, port 5432. Appliquez les migrations de `backend/migrations/` après vérification sur une base de recette. Le health check du backend est `/api/health`.
-2. Déployez [frontend/](frontend/) sur Cloudflare Workers. Définissez la variable runtime `API_ORIGIN` avec l’origine HTTPS du backend, sans chemin. Le Worker sert les fichiers frontend et relaie `/api/*` au backend Node; il ne se connecte jamais directement à PostgreSQL.
+2. Déployez [frontend/](frontend/) sur Cloudflare Workers. `API_ORIGIN` est définie dans `frontend/wrangler.jsonc` avec l’origine HTTPS Render. Si elle change, mettez à jour cette valeur avant le déploiement. Le Worker sert les fichiers frontend et relaie `/api/*` au backend Node; il ne se connecte jamais directement à PostgreSQL.
 3. Vérifiez `https://<backend>/api/health` puis `https://<frontend>/api/health`. Les deux doivent retourner `{"status":"ok","database":"connected"}`.
 
 `DATABASE_URL` et `JWT_SECRET` ne doivent être configurés que sur le backend. Après le basculement, supprimez les anciens secrets backend du Worker Cloudflare. `API_ORIGIN` n’est pas secret. Le proxy conserve le chemin, la query string et les cookies afin que les sessions restent same-site depuis le domaine Cloudflare.

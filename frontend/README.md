@@ -5,11 +5,11 @@ Application React/Vite et Cloudflare Worker. Le Worker sert les fichiers statiqu
 ## Cloudflare
 
 1. Déployez d’abord le projet backend Node, configurez ses secrets Supabase, puis vérifiez `https://<backend>/api/health` ; le résultat attendu est `{"status":"ok","database":"connected"}`.
-2. Dans Cloudflare Workers & Pages, définissez `API_ORIGIN` comme variable runtime du Worker `chantier-connect`. Valeur : origine HTTPS seule du backend (ex. `https://api.example.com`, sans chemin final autre que `/`, ni identifiant). Le déploiement utilise `--keep-vars` pour conserver cette variable gérée dans le dashboard.
+2. `API_ORIGIN` est définie dans `wrangler.jsonc` sur `https://chantier-connect-backend.onrender.com`. Si l’URL du backend change, modifiez cette valeur et redéployez. Elle peut aussi être définie dans le tableau de bord Cloudflare ; le déploiement utilise `--keep-vars` pour conserver les variables runtime gérées dans le dashboard.
 3. Construisez avec `npm run build` et déployez avec `npm run deploy` (ou `npx wrangler deploy --keep-vars` après le build).
 4. Vérifiez `https://<frontend>/api/health`. La réponse provient du backend et doit confirmer `database: connected`.
 
-Ne définissez pas `DATABASE_URL` ou `JWT_SECRET` dans Cloudflare : ces secrets appartiennent uniquement au service backend. Après le basculement, supprimez aussi de Cloudflare les anciens secrets backend et variables Supabase inutilisés. `API_ORIGIN` n’est pas un secret.
+Ne définissez pas `DATABASE_URL` ou `JWT_SECRET` dans Cloudflare : ces secrets appartiennent uniquement au service backend. Supprimez aussi de Cloudflare les anciens secrets backend inutilisés. `API_ORIGIN` n’est pas un secret.
 
 ## Développement
 
