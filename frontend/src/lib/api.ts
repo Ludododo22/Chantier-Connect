@@ -1,4 +1,4 @@
-export type Capability = "manage_platform" | "manage_company" | "manage_team" | "manage_sites" | "manage_tasks" | "capture_photos" | "create_reports" | "validate_reports" | "clock_in" | "update_assigned_tasks" | "manage_finance" | "read_company" | "read_assigned" | "read_team" | "read_validated_reports"
+export type Capability = "manage_platform" | "manage_company" | "manage_team" | "manage_sites" | "manage_tasks" | "capture_photos" | "create_reports" | "validate_reports" | "clock_in" | "update_assigned_tasks" | "manage_finance" | "read_finance" | "read_company" | "read_assigned" | "read_team" | "read_validated_reports"
 
 export type UserRole = "EDITOR" | "ADMIN_ENTERPRISE" | "CONDUCTEUR" | "CHEF_CHANTIER" | "COMPAGNON" | "SOUS_TRAITANT" | "COMPTABLE" | "MAITRE_OUVRAGE"
 
@@ -24,6 +24,12 @@ export interface AuthUser {
   tenantPlan: string
 
   assignedSite: string | null
+
+  assignedSiteId: string | null
+
+  requiresUserConsent: boolean
+
+  sensitiveDataConsented: boolean
 
   sections: string[]
 
@@ -51,7 +57,7 @@ export interface Site {
 
   location: string | null
 
-  status: "En cours" | "En pause" | "Terminé" | null
+  status: "En cours" | "En pause" | "Terminé" | "Archivé" | null
 
   progress: number | null
 
@@ -138,6 +144,8 @@ export interface TeamMember {
   roleLabel: string
 
   assignedSite: string | null
+
+  assignedSiteId: string | null
 
   active: boolean
 
@@ -249,7 +257,7 @@ export interface PlatformTenant {
 
   name: string
 
-  status: "Actif" | "Essai" | "Impayé" | "Suspendu"
+  status: "Actif" | "Essai" | "Impayé" | "Suspendu" | "Archivé"
 
   createdAt: string
 
@@ -264,6 +272,42 @@ export interface PlatformTenant {
   userCount: number
 
   siteCount: number
+}
+
+export interface PlatformUser {
+  id: string
+  fullName: string
+  emailMasked: string
+  phoneMasked: string | null
+  role: UserRole
+  active: boolean
+  tenantId: string | null
+  tenantName: string
+  assignedSiteId: string | null
+  assignedSite: string | null
+  requiresUserConsent: boolean
+  sensitiveDataConsented: boolean
+  createdAt: string
+}
+
+export interface PlatformAuditLog {
+  id: string
+  actorId: string | null
+  actorName: string | null
+  actorRole: string
+  tenantId: string | null
+  tenantName: string | null
+  targetType: string
+  targetId: string
+  action: string
+  payloadMasked: Record<string, unknown>
+  ip: string | null
+  userAgent: string | null
+  createdAt: string
+}
+
+export interface SiteDetail extends Site {
+  assignedTeam: Array<{ id: string; fullName: string; role: string; active: boolean }>
 }
 
 export type RegistrationRequestStatus =
@@ -572,6 +616,28 @@ export const api = {
     return result.user
   },
 
+  async requestPasswordReset(email: string) {
+    return request<{ message: string }>("/api/auth/password-reset/request", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  async completePasswordReset(token: string, newPassword: string) {
+    await request<void>("/api/auth/password-reset/complete", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+    })
+  },
+
+  async savePrivacyConsent(accepted: boolean) {
+    const result = await request<{ data: { sensitiveDataConsented: boolean } }>(
+      "/api/auth/privacy-consent",
+      { method: "PATCH", body: JSON.stringify({ accepted }) },
+    )
+    return result.data
+  },
+
   async updateProfile(input: {
     fullName: string
 
@@ -634,12 +700,42 @@ export const api = {
     return result.data
   },
 
-  async createSite(input: { name: string; location: string }) {
-    await request<{ data: Site }>("/api/sites", {
+  async site(id: string) {
+    const result = await request<{ data: SiteDetail }>(`/api/sites/${encodeURIComponent(id)}`)
+    return result.data
+  },
+
+  async createSite(input: {
+    name: string
+    location: string
+    status?: NonNullable<Site["status"]>
+    progress?: number
+    budgetFcfa?: number
+    startDate?: string | null
+    endDate?: string | null
+  }) {
+    const result = await request<{ data: Site }>("/api/sites", {
       method: "POST",
 
       body: JSON.stringify(input),
     })
+    return result.data
+  },
+
+  async updateSite(id: string, input: {
+    name: string
+    location: string
+    status: NonNullable<Site["status"]>
+    progress: number
+    budgetFcfa: number
+    startDate: string | null
+    endDate: string | null
+  }) {
+    const result = await request<{ data: Site }>(`/api/sites/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    })
+    return result.data
   },
 
   async tasks() {
@@ -723,7 +819,8 @@ export const api = {
 
     role: ManagedRole
 
-    assignedSite: string | null
+    assignedSiteId?: string | null
+    assignedSite?: string | null
 
     temporaryPassword: string
   }) {
@@ -741,7 +838,8 @@ export const api = {
 
     input: {
       role: ManagedRole
-      assignedSite: string | null
+      assignedSiteId?: string | null
+      assignedSite?: string | null
       active: boolean
     },
   ) {
@@ -761,6 +859,14 @@ export const api = {
       { method: "DELETE" },
     )
 
+    return result.data
+  },
+
+  async updateTeamMemberProfile(id: string, input: { fullName: string; email: string; phone: string | null }) {
+    const result = await request<{ data: Pick<TeamMember, "id" | "fullName" | "role" | "active"> }>(
+      `/api/team/${encodeURIComponent(id)}/profile`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
     return result.data
   },
 
@@ -927,6 +1033,81 @@ export const api = {
     return result.data
   },
 
+  async platformTenant(id: string) {
+    const result = await request<{ data: PlatformTenant & { activeSiteCount: number } }>(
+      `/api/platform/tenants/${encodeURIComponent(id)}`,
+    )
+    return result.data
+  },
+
+  async updatePlatformTenant(id: string, input: { name?: string; status?: PlatformTenant["status"] }) {
+    const result = await request<{ data: Pick<PlatformTenant, "id" | "name" | "status"> }>(
+      `/api/platform/tenants/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
+  async platformUsers(input: {
+    page?: number
+    limit?: number
+    q?: string
+    status?: "all" | "active" | "blocked"
+    role?: UserRole
+    tenantId?: string
+  } = {}) {
+    const search = new URLSearchParams()
+    if (input.page) search.set("page", String(input.page))
+    if (input.limit) search.set("limit", String(input.limit))
+    if (input.q) search.set("q", input.q)
+    if (input.status) search.set("status", input.status)
+    if (input.role) search.set("role", input.role)
+    if (input.tenantId) search.set("tenantId", input.tenantId)
+    const result = await request<{ data: PlatformUser[]; page: number; limit: number; total: number }>(
+      `/api/platform/users?${search.toString()}`,
+    )
+    return result
+  },
+
+  async updatePlatformUser(id: string, input: { fullName?: string; email?: string; phone?: string | null }) {
+    return request<{ data: { id: string; fullName: string; emailMasked: string; phoneMasked: string | null } }>(
+      `/api/platform/users/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    ).then((result) => result.data)
+  },
+
+  async setPlatformUserActive(id: string, active: boolean) {
+    const result = await request<{ data: Pick<PlatformUser, "id" | "active" | "role"> }>(
+      `/api/platform/users/${encodeURIComponent(id)}/status`,
+      { method: "PATCH", body: JSON.stringify({ active }) },
+    )
+    return result.data
+  },
+
+  async sendPlatformPasswordReset(id: string) {
+    return request<{ message: string }>(`/api/platform/users/${encodeURIComponent(id)}/password-reset`, { method: "POST" })
+  },
+
+  async supportUserAccess(id: string, justification: string, emergencyOverride: boolean) {
+    const result = await request<{ data: { id: string; fullName: string; email: string; phone: string | null; role: string; active: boolean; consented: boolean } }>(
+      `/api/platform/users/${encodeURIComponent(id)}/support-access`,
+      { method: "POST", body: JSON.stringify({ justification, emergencyOverride }) },
+    )
+    return result.data
+  },
+
+  async platformAuditLogs(input: { page?: number; limit?: number; action?: string; tenantId?: string } = {}) {
+    const search = new URLSearchParams()
+    if (input.page) search.set("page", String(input.page))
+    if (input.limit) search.set("limit", String(input.limit))
+    if (input.action) search.set("action", input.action)
+    if (input.tenantId) search.set("tenantId", input.tenantId)
+    const result = await request<{ data: PlatformAuditLog[]; page: number; limit: number }>(
+      `/api/platform/audit-logs?${search.toString()}`,
+    )
+    return result.data
+  },
+
   async registrationRequests() {
     const result = await request<{ data: RegistrationRequest[] }>(
       "/api/platform/registration-requests",
@@ -936,7 +1117,7 @@ export const api = {
 
   async updateRegistrationRequest(
     id: string,
-    status: RegistrationRequestStatus,
+    status: Exclude<RegistrationRequestStatus, "Entreprise créée">,
   ) {
     const result = await request<{
       data: Pick<RegistrationRequest, "id" | "status" | "updatedAt">
@@ -1030,7 +1211,13 @@ export const api = {
 
     adminEmail: string
 
+    phone: string | null
+
     temporaryPassword: string
+
+    planId: string
+
+    registrationRequestId?: string
   }) {
     const result = await request<{
       data: Pick<PlatformTenant, "id" | "name" | "status" | "createdAt">
@@ -1106,10 +1293,7 @@ export const api = {
       {
         method: id ? "PATCH" : "POST",
 
-        body: JSON.stringify({
-          ...input,
-          active: input.active ?? true,
-        }),
+        body: JSON.stringify(input),
       },
     )
 

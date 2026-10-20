@@ -37,4 +37,6 @@ Créez les dépôts backend et frontend, puis exécutez les commandes Git à par
 
 L’application comprend la connexion par email/téléphone, le contrôle de rôles et la séparation des données par entreprise, des espaces terrain/pilotage/finance/back-office éditeur, ainsi que la gestion d’abonnements et de factures manuelles. Les paiements Mobile Money ne sont pas activés dans cette version.
 
+Le [Guide d’entreprise](GUIDE-ENTREPRISE.md) décrit les rôles client, leurs espaces, leurs responsabilités et le flux recommandé entre chantier, rapports et comptabilité.
+
 **État : MVP utilisable en pilote accompagné; production commerciale générale non validée.** Le build, le smoke test des huit rôles et une simulation locale du cloisonnement entre deux entreprises ont réussi le 18 octobre 2026. Voir le compte rendu dans [tests-audits/audits/etat-pilote-2026-10-18.md](tests-audits/audits/etat-pilote-2026-10-18.md).

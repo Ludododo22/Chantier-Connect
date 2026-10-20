@@ -14,18 +14,22 @@ import {
   type PlatformInvoice,
   type PlatformSettings,
   type PlatformTenant,
+  type PlatformUser,
+  type PlatformAuditLog,
   type RegistrationRequest,
   type RegistrationRequestStatus,
   type RecentActivity,
   type Report,
   type SitePhoto,
   type Site,
+  type SiteDetail,
   type SubscriptionPlan,
   type SupportTicket,
   type SupportTicketStatus,
   type Task,
   type TenantSettings,
   type TeamMember,
+  type UserRole,
 } from "./lib/api"
 
 type IconName = "alert" | "arrow" | "building" | "calendar" | "camera" | "chart" | "check" | "chevron" | "clipboard" | "cloud" | "hardhat" | "home" | "lock" | "logout" | "menu" | "moon" | "pin" | "plus" | "search" | "settings" | "task" | "team" | "user" | "wallet"
@@ -686,6 +690,90 @@ function StandaloneLogin({
           <p className="auth-page__switch">
             Pas encore client ? <a href="/inscription">Demander l’ouverture d’un espace</a>
           </p>
+          <p className="auth-page__switch">
+            Mot de passe oublié ? <a href="/reinitialiser-mot-de-passe">Recevoir un lien de réinitialisation</a>
+          </p>
+        </form>
+      </section>
+    </main>
+  )
+}
+
+function PasswordResetPage() {
+  const token = new URLSearchParams(window.location.search).get("token") ?? ""
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmation, setConfirmation] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError("")
+    setSuccess("")
+    if (token && password !== confirmation) {
+      setError("Les deux mots de passe ne correspondent pas.")
+      return
+    }
+    setLoading(true)
+    try {
+      if (token) {
+        await api.completePasswordReset(token, password)
+        setSuccess("Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter.")
+      } else {
+        const result = await api.requestPasswordReset(email)
+        setSuccess(result.message)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "La demande n’a pas pu aboutir.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-page__story">
+        <a className="landing-brand" href="/" aria-label="Retour à l’accueil">
+          <Brand />
+        </a>
+        <div>
+          <span className="landing-eyebrow">Compte sécurisé</span>
+          <h1>Retrouvez l’accès à votre espace.</h1>
+          <p>Un lien temporaire vous permet de choisir un nouveau mot de passe, sans que l’équipe support ne le connaisse.</p>
+        </div>
+        <a className="auth-page__back" href="/connexion">Retour à la connexion</a>
+      </section>
+      <section className="auth-page__panel">
+        <form className="auth-page__card" onSubmit={(event) => void submit(event)}>
+          <div className="landing-auth-card__heading">
+            <span className="landing-eyebrow">Réinitialisation sécurisée</span>
+            <h2>{token ? "Choisir un nouveau mot de passe" : "Mot de passe oublié"}</h2>
+            <p>{token ? "Le lien est valable 30 minutes et ne peut être utilisé qu’une seule fois." : "Indiquez l’adresse email associée à votre compte."}</p>
+          </div>
+          {token ? (
+            <>
+              <label>
+                <span>Nouveau mot de passe</span>
+                <input autoComplete="new-password" type="password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required />
+              </label>
+              <label>
+                <span>Confirmer le mot de passe</span>
+                <input autoComplete="new-password" type="password" minLength={12} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required />
+              </label>
+            </>
+          ) : (
+            <label>
+              <span>Adresse email</span>
+              <input autoComplete="email" type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} required />
+            </label>
+          )}
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          {success && <p className="landing-contact-card__feedback" role="status">{success}</p>}
+          <button className="primary-button" type="submit" disabled={loading || Boolean(success && token)}>
+            {loading ? "Traitement…" : token ? "Enregistrer le nouveau mot de passe" : "Envoyer le lien"}
+          </button>
         </form>
       </section>
     </main>
@@ -809,10 +897,21 @@ const sectionIcons: Record<string, IconName> = {
   "Dossiers de paiement": "wallet",
   Pointage: "calendar",
   Entreprises: "building",
+  Utilisateurs: "team",
+  "Journal d’audit": "clipboard",
   Abonnements: "wallet",
   Support: "alert",
   Paramètres: "settings",
   Profil: "user",
+}
+
+const auditActionLabels: Record<string, string> = {
+  ATTENDANCE_CLOCKED_IN: "Arrivée enregistrée",
+  ATTENDANCE_CLOCKED_OUT: "Départ enregistré",
+  FINANCE_ENTRY_CREATED: "Écriture financière créée",
+  FINANCE_ENTRY_REALIZED: "Écriture financière réalisée",
+  PAYMENT_DOSSIER_CREATED: "Dossier de paiement créé",
+  PAYMENT_DOSSIER_STATUS_CHANGED: "Statut du dossier de paiement modifié",
 }
 
 const actionFields: Record<ActionKind, {
@@ -827,6 +926,11 @@ const actionFields: Record<ActionKind, {
   site: [
     { label: "Nom du chantier", placeholder: "Ex. Immeuble Batterie IV" },
     { label: "Localisation", placeholder: "Quartier, ville" },
+    { label: "Statut", placeholder: "En cours", required: false },
+    { label: "Progression (%)", placeholder: "0", type: "number", required: false, min: 0, max: 100 },
+    { label: "Budget FCFA", placeholder: "0", type: "number", required: false, min: 0 },
+    { label: "Date de début", placeholder: "", type: "date", required: false },
+    { label: "Date de fin", placeholder: "", type: "date", required: false },
   ],
   task: [
     { label: "Tâche", placeholder: "Travail à réaliser" },
@@ -887,6 +991,13 @@ const actionFields: Record<ActionKind, {
       placeholder: "admin@entreprise.ga",
       type: "email",
     },
+    {
+      label: "Téléphone administrateur",
+      placeholder: "+241…",
+      type: "tel",
+      required: false,
+    },
+    { label: "Plan d’abonnement", placeholder: "Choisir un plan" },
     {
       label: "Mot de passe provisoire",
       placeholder: "12 caractères minimum",
@@ -999,10 +1110,26 @@ function ActionDialog({
 }) {
   const [taskSites, setTaskSites] = useState<Site[]>([])
   const [platformTenants, setPlatformTenants] = useState<PlatformTenant[]>([])
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([])
+  const [platformUserSearch, setPlatformUserSearch] = useState("")
+  const [platformUserStatus, setPlatformUserStatus] = useState<"all" | "active" | "blocked">("all")
+  const [platformUserPage, setPlatformUserPage] = useState(1)
+  const [platformUserTotal, setPlatformUserTotal] = useState(0)
+  const [platformAuditLogs, setPlatformAuditLogs] = useState<PlatformAuditLog[]>([])
+  const [auditActionFilter, setAuditActionFilter] = useState("")
+  const [supportUserDetail, setSupportUserDetail] = useState<Awaited<ReturnType<typeof api.supportUserAccess>> | null>(null)
+  const [tenantPlans, setTenantPlans] = useState<SubscriptionPlan[]>([])
+  const [tenantPlanId, setTenantPlanId] = useState("")
   const [taskSitesLoading, setTaskSitesLoading] = useState(false)
+  const [memberRole, setMemberRole] = useState<ManagedRole>("COMPAGNON")
+  const [tenantPlansLoading, setTenantPlansLoading] = useState(false)
   const [taskSitesError, setTaskSitesError] = useState("")
   const [submitError, setSubmitError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (action?.kind === "member") setMemberRole("COMPAGNON")
+  }, [action?.kind])
 
   useEffect(() => {
     if (
@@ -1034,6 +1161,43 @@ function ActionDialog({
       })
       .finally(() => {
         if (activeRequest) setTaskSitesLoading(false)
+      })
+    return () => {
+      activeRequest = false
+    }
+  }, [action?.kind])
+
+  useEffect(() => {
+    if (action?.kind !== "tenant") return
+    let activeRequest = true
+    setTenantPlansLoading(true)
+    setTenantPlans([])
+    setTenantPlanId("")
+    setTaskSitesError("")
+    api
+      .subscriptionPlans()
+      .then((result) => {
+        if (activeRequest) {
+          const plans = result.filter((plan) => plan.active)
+          setTenantPlans(plans)
+          setTenantPlanId(
+            plans.find((plan) => plan.name === "Plan PME")?.id ??
+              plans[0]?.id ??
+              "",
+          )
+        }
+      })
+      .catch((error: unknown) => {
+        if (activeRequest) {
+          setTaskSitesError(
+            error instanceof Error
+              ? error.message
+              : "Impossible de charger les plans d’abonnement.",
+          )
+        }
+      })
+      .finally(() => {
+        if (activeRequest) setTenantPlansLoading(false)
       })
     return () => {
       activeRequest = false
@@ -1073,18 +1237,27 @@ function ActionDialog({
   }
 
   const fields = actionFields[action.kind]
+  const assignableTeamSites = taskSites.filter(
+    (site) => site.status !== "Archivé",
+  )
   const selectableTaskSites = user.capabilities.includes("read_company")
     ? taskSites
     : taskSites.filter((site) => site.name === user.assignedSite)
   const visibleFields =
-    action.kind === "member"
+    action.kind === "site"
+      ? action.id
+        ? fields
+        : fields.slice(0, 2)
+      : action.kind === "member"
       ? fields.slice(0, 2)
       : action.kind === "invoice"
         ? action.id
           ? [fields[4]!]
           : fields.slice(0, 4)
       : action.kind === "tenant"
-        ? fields.slice(0, 3)
+        ? fields.slice(0, 5)
+      : action.kind === "plan"
+        ? fields
         : fields.slice(0, action.kind === "report" ? 3 : 2)
   const requiredTailField =
     action.kind === "member" || action.kind === "tenant"
@@ -1125,6 +1298,13 @@ function ActionDialog({
         } else {
           values[key] = String(value)
         }
+      }
+      if (
+        action.kind === "tenant" &&
+        values["Mot de passe provisoire"] !==
+          values["Confirmer le mot de passe provisoire"]
+      ) {
+        throw new Error("Les deux saisies du mot de passe provisoire ne correspondent pas.")
       }
       if (action.kind === "photo" && values.includeLocation === "on") {
         if (!navigator.geolocation) {
@@ -1188,17 +1368,47 @@ function ActionDialog({
           {visibleFields.map((field) => (
             <label key={field.label}>
               <span>{field.label}</span>
-              <input
-                name={field.label}
-                type={field.type ?? "text"}
-                placeholder={field.placeholder}
-                required={field.required ?? true}
-                min={field.min}
-                max={field.max}
-                minLength={field.minLength}
-                step={field.type === "number" ? 1 : undefined}
-                defaultValue={action.initialValues?.[field.label]}
-              />
+              {action.kind === "site" && field.label === "Statut" ? (
+                <select name={field.label} defaultValue={action.initialValues?.[field.label] ?? "En cours"}>
+                  {(["En cours", "En pause", "Terminé", "Archivé"] as const).map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+              ) : action.kind === "tenant" &&
+              field.label === "Plan d’abonnement" ? (
+                <select
+                  name="planId"
+                  value={action.initialValues?.planId ?? tenantPlanId}
+                  required
+                  disabled={tenantPlansLoading || tenantPlans.length === 0}
+                  onChange={(event) => setTenantPlanId(event.target.value)}
+                >
+                  <option value="" disabled>
+                    {tenantPlansLoading
+                      ? "Chargement des plans…"
+                      : "Choisir un plan actif"}
+                  </option>
+                  {tenantPlans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} · {Number(plan.monthlyPriceFcfa) === 0
+                        ? "Sur devis"
+                        : `${formatFcfa(Number(plan.monthlyPriceFcfa))} / mois`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  name={field.label}
+                  type={field.type ?? "text"}
+                  placeholder={field.placeholder}
+                  required={field.required ?? true}
+                  min={field.min}
+                  max={field.max}
+                  minLength={field.minLength}
+                  step={field.type === "number" ? 1 : undefined}
+                  defaultValue={action.initialValues?.[field.label]}
+                />
+              )}
             </label>
           ))}
           {requiredTailField && (
@@ -1211,6 +1421,26 @@ function ActionDialog({
                 required={requiredTailField.required ?? true}
                 minLength={requiredTailField.minLength}
                 defaultValue={action.initialValues?.[requiredTailField.label]}
+                autoComplete={action.kind === "tenant" ? "new-password" : undefined}
+              />
+              {action.kind === "tenant" && (
+                <small>
+                  Choisissez le mot de passe provisoire à remettre à
+                  l’administrateur par un canal sécurisé.
+                </small>
+              )}
+            </label>
+          )}
+          {action.kind === "tenant" && (
+            <label>
+              <span>Confirmer le mot de passe provisoire</span>
+              <input
+                name="Confirmer le mot de passe provisoire"
+                type="password"
+                placeholder="Saisissez-le à nouveau"
+                required
+                minLength={12}
+                autoComplete="new-password"
               />
             </label>
           )}
@@ -1238,7 +1468,14 @@ function ActionDialog({
             <>
               <label>
                 <span>Rôle</span>
-                <select name="role" defaultValue="COMPAGNON" required>
+                <select
+                  name="role"
+                  value={memberRole}
+                  required
+                  onChange={(event) =>
+                    setMemberRole(event.target.value as ManagedRole)
+                  }
+                >
                   {managedRoles.map((role) => (
                     <option key={role.value} value={role.value}>
                       {role.label}
@@ -1247,15 +1484,19 @@ function ActionDialog({
                 </select>
               </label>
               <label>
-                <span>Chantier affecté (si applicable)</span>
+                <span>
+                  Chantier affecté
+                  {siteScopedRoles.includes(memberRole) ? " (obligatoire)" : " (facultatif)"}
+                </span>
                 <select
-                  name="assignedSite"
+                  name="assignedSiteId"
                   defaultValue=""
-                  disabled={taskSitesLoading || taskSites.length === 0}
+                  required={siteScopedRoles.includes(memberRole)}
+                  disabled={taskSitesLoading || assignableTeamSites.length === 0}
                 >
                   <option value="">Aucun chantier spécifique</option>
-                  {taskSites.map((site) => (
-                    <option key={site.id} value={site.name}>
+                  {assignableTeamSites.map((site) => (
+                    <option key={site.id} value={site.id}>
                       {site.name}
                     </option>
                   ))}
@@ -1359,19 +1600,15 @@ function ActionDialog({
                 </label>
               )}
             </>
-          ) : action.kind !== "site" ? (
-            <label>
-              <span>Chantier / périmètre</span>
-              <select
-                name="Chantier / périmètre"
-                defaultValue="Résidence Les Palmiers"
-              >
-                <option>Résidence Les Palmiers</option>
-                <option>École Nzeng-Ayong</option>
-                <option>Centre médical Owendo</option>
-              </select>
-            </label>
           ) : null}
+          {action.kind === "tenant" &&
+            !tenantPlansLoading &&
+            tenantPlans.length === 0 &&
+            !taskSitesError && (
+              <div className="auth-error" role="alert">
+                Aucun plan actif n’est disponible. Activez un plan dans Abonnements avant de créer une entreprise.
+              </div>
+            )}
           {taskSitesError &&
             (action.kind === "task" ||
               action.kind === "report" ||
@@ -1380,7 +1617,9 @@ function ActionDialog({
               action.kind === "budget" ||
               action.kind === "treasury" ||
               action.kind === "payment" ||
-              action.kind === "ticket" || action.kind === "invoice") && (
+              action.kind === "ticket" ||
+              action.kind === "invoice" ||
+              action.kind === "tenant") && (
               <div className="auth-error" role="alert">
                 {taskSitesError}
               </div>
@@ -1391,13 +1630,17 @@ function ActionDialog({
             </div>
           )}
           <div className="action-modal__note">
-            <Icon name="cloud" />
+            <Icon name={action.kind === "tenant" ? "building" : "cloud"} />
             <span>
-              {action.kind === "photo"
-                ? "Données enregistrées sur le serveur"
-                : "Connexion au serveur requise"}
+              {action.kind === "tenant"
+                ? "Création de l’espace entreprise"
+                : action.kind === "photo"
+                  ? "Enregistrement de la photo"
+                  : "Enregistrement de l’opération"}
               <small>
-                "L’opération sera enregistrée dans votre espace autorisé."
+                {action.kind === "tenant"
+                  ? "Essai de 14 jours. L’entreprise renseignera ses chantiers après la création de son espace."
+                  : "Les informations seront enregistrées dans votre espace autorisé."}
               </small>
             </span>
           </div>
@@ -1419,7 +1662,9 @@ function ActionDialog({
                   (taskSitesLoading || selectableTaskSites.length === 0)) ||
                 ((action.kind === "ticket" ||
                   (action.kind === "invoice" && !action.id)) &&
-                  platformTenants.length === 0)
+                  platformTenants.length === 0) ||
+                (action.kind === "tenant" &&
+                  (tenantPlansLoading || tenantPlans.length === 0))
               }
             >
               <Icon name="check" />
@@ -1562,11 +1807,13 @@ function ModuleView({
   const [profilePhotoChecked, setProfilePhotoChecked] = useState(false)
   const [profilePhotoSaving, setProfilePhotoSaving] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
+  const [consentSaving, setConsentSaving] = useState(false)
+  const [sensitiveConsent, setSensitiveConsent] = useState(user.sensitiveDataConsented)
   const [profileError, setProfileError] = useState("")
   const [clockBusy, setClockBusy] = useState(false)
   const [siteFilter, setSiteFilter] = useState("Tous")
   const [siteSearch, setSiteSearch] = useState("")
-  const [selectedSite, setSelectedSite] = useState<Site | null>(null)
+  const [selectedSite, setSelectedSite] = useState<SiteDetail | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [photoFilter, setPhotoFilter] = useState("Toutes")
   const [photoSearch, setPhotoSearch] = useState("")
@@ -1586,6 +1833,29 @@ function ModuleView({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [paymentDossiers, setPaymentDossiers] = useState<PaymentDossier[]>([])
   const [platformTenants, setPlatformTenants] = useState<PlatformTenant[]>([])
+  const [selectedPlatformTenant, setSelectedPlatformTenant] = useState<
+    (PlatformTenant & { activeSiteCount: number }) | null
+  >(null)
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([])
+  const [platformUserTotal, setPlatformUserTotal] = useState(0)
+  const [platformUserPage, setPlatformUserPage] = useState(1)
+  const [platformUserSearch, setPlatformUserSearch] = useState("")
+  const [platformUserStatus, setPlatformUserStatus] = useState<
+    "all" | "active" | "blocked"
+  >("all")
+  const [platformUserRole, setPlatformUserRole] = useState<UserRole | "all">("all")
+  const [platformUserTenantId, setPlatformUserTenantId] = useState("all")
+  const [supportUserDetail, setSupportUserDetail] = useState<{
+    id: string
+    fullName: string
+    email: string
+    phone: string | null
+    role: string
+    active: boolean
+    consented: boolean
+  } | null>(null)
+  const [platformAuditLogs, setPlatformAuditLogs] = useState<PlatformAuditLog[]>([])
+  const [auditActionFilter, setAuditActionFilter] = useState("")
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequest[]>([])
   const [platformInvoices, setPlatformInvoices] = useState<PlatformInvoice[]>([])
   const [invoiceToPrint, setInvoiceToPrint] = useState<PlatformInvoice | null>(null)
@@ -1723,6 +1993,49 @@ function ModuleView({
     }
   }, [active, dataRevision])
 
+  useEffect(() => {
+    if (active !== "Utilisateurs" || user.role !== "EDITOR") return
+    let activeRequest = true
+    setLoadingData(true)
+    setDataError("")
+    Promise.all([
+      api.platformUsers({
+        page: platformUserPage,
+        limit: 25,
+        q: platformUserSearch,
+        status: platformUserStatus,
+        ...(platformUserRole === "all" ? {} : { role: platformUserRole }),
+        ...(platformUserTenantId === "all" ? {} : { tenantId: platformUserTenantId }),
+      }),
+      api.platformTenants(),
+    ]).then(([result, tenants]) => {
+      if (!activeRequest) return
+      setPlatformUsers(result.data)
+      setPlatformUserTotal(result.total)
+      setPlatformTenants(tenants)
+    }).catch((error: unknown) => {
+      if (activeRequest) setDataError(error instanceof Error ? error.message : "Impossible de charger les comptes.")
+    }).finally(() => {
+      if (activeRequest) setLoadingData(false)
+    })
+    return () => { activeRequest = false }
+  }, [active, dataRevision, platformUserPage, platformUserSearch, platformUserStatus, platformUserRole, platformUserTenantId, user.role])
+
+  useEffect(() => {
+    if (active !== "Journal d’audit" || user.role !== "EDITOR") return
+    let activeRequest = true
+    setLoadingData(true)
+    setDataError("")
+    api.platformAuditLogs({ limit: 50, action: auditActionFilter || undefined }).then((result) => {
+      if (activeRequest) setPlatformAuditLogs(result)
+    }).catch((error: unknown) => {
+      if (activeRequest) setDataError(error instanceof Error ? error.message : "Impossible de charger le journal d’audit.")
+    }).finally(() => {
+      if (activeRequest) setLoadingData(false)
+    })
+    return () => { activeRequest = false }
+  }, [active, dataRevision, auditActionFilter, user.role])
+
   async function toggleAttendance() {
     if (!can("clock_in") || clockBusy) return
     setClockBusy(true)
@@ -1837,9 +2150,32 @@ function ModuleView({
     }
   }
 
+  async function updatePlatformTenant(
+    tenant: PlatformTenant,
+    updates: { name?: string; status?: PlatformTenant["status"] },
+  ) {
+    try {
+      const updated = await api.updatePlatformTenant(tenant.id, updates)
+      setPlatformTenants((current) =>
+        current.map((item) => item.id === tenant.id ? { ...item, ...updated } : item),
+      )
+      notify(`Entreprise ${updated.status === "Archivé" ? "archivée" : "mise à jour"}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "L’entreprise n’a pas pu être mise à jour.")
+    }
+  }
+
+  async function showPlatformTenantDetails(tenant: PlatformTenant) {
+    try {
+      setSelectedPlatformTenant(await api.platformTenant(tenant.id))
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Le détail de l’entreprise n’a pas pu être chargé.")
+    }
+  }
+
   async function updateRegistrationRequestStatus(
     request: RegistrationRequest,
-    status: RegistrationRequestStatus,
+    status: Exclude<RegistrationRequestStatus, "Entreprise créée">,
   ) {
     try {
       const updated = await api.updateRegistrationRequest(request.id, status)
@@ -2008,9 +2344,9 @@ function ModuleView({
     }
   }
 
-  async function toggleTaskStatus(task: Task) {
+  async function setTaskStatus(task: Task, status: Task["status"]) {
     if (!canUpdateTask(task)) return
-    const status = task.status === "Terminée" ? "À faire" : "Terminée"
+    if (task.status === status) return
     try {
       const result = await api.updateTaskStatus(task.id, status)
       setTasks((current) =>
@@ -2024,11 +2360,7 @@ function ModuleView({
             : item,
         ),
       )
-      notify(
-        status === "Terminée"
-          ? "Tâche marquée comme terminée."
-          : "Tâche rouverte.",
-      )
+      notify(`Tâche mise à jour : ${status.toLocaleLowerCase("fr-FR")}.`)
     } catch (error) {
       notify(
         error instanceof Error
@@ -2042,7 +2374,7 @@ function ModuleView({
     member: TeamMember,
     updates: {
       role?: ManagedRole
-      assignedSite?: string | null
+      assignedSiteId?: string | null
       active?: boolean
     },
   ) {
@@ -2053,11 +2385,11 @@ function ModuleView({
     )
       return
     const role = updates.role ?? member.role
-    const assignedSite =
-      updates.assignedSite === undefined
-        ? member.assignedSite
-        : updates.assignedSite
-    if (siteScopedRoles.includes(role) && !assignedSite) {
+    const assignedSiteId =
+      updates.assignedSiteId === undefined
+        ? member.assignedSiteId
+        : updates.assignedSiteId
+    if (siteScopedRoles.includes(role) && !assignedSiteId) {
       notify("Affectez un chantier à ce rôle avant d’enregistrer.")
       return
     }
@@ -2065,7 +2397,7 @@ function ModuleView({
     try {
       const updated = await api.updateTeamMember(member.id, {
         role,
-        assignedSite,
+        assignedSiteId,
         active: updates.active ?? member.active,
       })
       setTeamMembers((current) =>
@@ -2122,7 +2454,109 @@ function ModuleView({
     }
   }
 
+  async function editTeamMemberProfile(member: TeamMember) {
+    if (!can("manage_team") || member.role === "ADMIN_ENTERPRISE") return
+    const fullName = window.prompt("Nom complet", member.fullName)
+    if (fullName === null) return
+    const email = window.prompt("Email professionnel", member.email)
+    if (email === null) return
+    const phone = window.prompt("Téléphone professionnel", member.phone ?? "")
+    if (phone === null) return
+    try {
+      await api.updateTeamMemberProfile(member.id, {
+        fullName,
+        email,
+        phone: phone.trim() || null,
+      })
+      onDataChange()
+      notify(`Profil de ${fullName} mis à jour.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Le profil n’a pas pu être modifié.")
+    }
+  }
+
+  async function togglePlatformUser(userRecord: PlatformUser) {
+    const nextActive = !userRecord.active
+    const action = nextActive ? "réactiver" : "bloquer"
+    if (!window.confirm(`Voulez-vous ${action} le compte de ${userRecord.fullName} ?`)) return
+    try {
+      await api.setPlatformUserActive(userRecord.id, nextActive)
+      notify(`Compte ${nextActive ? "réactivé" : "bloqué"}.`)
+      onDataChange()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Le statut du compte n’a pas pu être modifié.")
+    }
+  }
+
+  async function resetPlatformUserPassword(userRecord: PlatformUser) {
+    if (!window.confirm(`Envoyer un lien de réinitialisation à ${userRecord.emailMasked} ?`)) return
+    try {
+      await api.sendPlatformPasswordReset(userRecord.id)
+      notify("Lien de réinitialisation envoyé à l’adresse du compte.")
+      onDataChange()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Le lien de réinitialisation n’a pas pu être envoyé.")
+    }
+  }
+
+  async function editPlatformUser(userRecord: PlatformUser) {
+    const fullName = window.prompt("Nom complet", userRecord.fullName)
+    if (fullName === null) return
+    const email = window.prompt("Nouvel email (laisser vide pour conserver l’adresse actuelle)", "")
+    if (email === null) return
+    const phone = window.prompt("Nouveau téléphone (laisser vide pour conserver le numéro actuel)", "")
+    if (phone === null) return
+    const input: { fullName?: string; email?: string; phone?: string | null } = { fullName }
+    if (email.trim()) input.email = email.trim()
+    if (phone.trim()) input.phone = phone.trim()
+    try {
+      await api.updatePlatformUser(userRecord.id, input)
+      notify("Compte utilisateur mis à jour.")
+      onDataChange()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Le compte n’a pas pu être modifié.")
+    }
+  }
+
+  async function openPlatformSupportAccess(userRecord: PlatformUser) {
+    let justification = window.prompt("Justification obligatoire de l’accès support (12 caractères minimum).")
+    if (!justification?.trim()) return
+    try {
+      const detail = await api.supportUserAccess(userRecord.id, justification.trim(), false)
+      setSupportUserDetail(detail)
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes("consentement")) {
+        const override = window.confirm("Le consentement du compte n’est pas enregistré. Déclencher un accès d’urgence sera journalisé. Continuer ?")
+        if (!override) return
+        justification = window.prompt("Justification d’urgence détaillée (20 caractères minimum).", justification)
+        if (!justification || justification.trim().length < 20) {
+          notify("La justification d’urgence doit contenir au moins 20 caractères.")
+          return
+        }
+        try {
+          setSupportUserDetail(await api.supportUserAccess(userRecord.id, justification.trim(), true))
+        } catch (overrideError) {
+          notify(overrideError instanceof Error ? overrideError.message : "L’accès support a été refusé.")
+        }
+        return
+      }
+      notify(error instanceof Error ? error.message : "L’accès support a été refusé.")
+    }
+  }
+
   if (active === "Chantiers") {
+    async function selectSite(site: Site) {
+      try {
+        if (can("manage_sites")) {
+          setSelectedSite(await api.site(site.id))
+        } else {
+          setSelectedSite({ ...site, assignedTeam: [] })
+        }
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "Le détail du chantier n’a pas pu être chargé.")
+      }
+    }
+
     const visibleSites = sites.filter(
       (site) =>
         (siteFilter === "Tous" || site.status === siteFilter) &&
@@ -2162,13 +2596,14 @@ function ModuleView({
               )}
               <div>
                 <dt>Équipe affectée</dt>
-                <dd>
-                  {selectedSite.teamCount === null
-                    ? "Non communiquée"
-                    : `${selectedSite.teamCount} personne${
-                        selectedSite.teamCount === 1 ? "" : "s"
-                      }`}
-                </dd>
+                <dd>{selectedSite.assignedTeam.length
+                  ? selectedSite.assignedTeam
+                      .filter((member) => member.active)
+                      .map((member) => `${member.fullName} · ${member.role}`)
+                      .join(", ")
+                  : selectedSite.teamCount === null || selectedSite.teamCount === 0
+                    ? "Aucune personne affectée"
+                    : `${selectedSite.teamCount} personne(s) affectée(s)`}</dd>
               </div>
               <div>
                 <dt>Échéance</dt>
@@ -2181,6 +2616,29 @@ function ModuleView({
                 </dd>
               </div>
             </dl>
+            {can("manage_sites") && (
+              <div className="settings-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    const site = selectedSite
+                    setSelectedSite(null)
+                    openAction("site", `Modifier ${site.name}`, site.id, {
+                      "Nom du chantier": site.name,
+                      Localisation: site.location ?? "",
+                      Statut: site.status ?? "En cours",
+                      "Progression (%)": String(site.progress ?? 0),
+                      "Budget FCFA": String(site.budgetFcfa ?? 0),
+                      "Date de début": site.startDate ?? "",
+                      "Date de fin": site.endDate ?? "",
+                    })
+                  }}
+                >
+                  Modifier le chantier
+                </button>
+              </div>
+            )}
           </DetailDialog>
         )}
         {dataError && (
@@ -2212,7 +2670,7 @@ function ModuleView({
             />
           </div>
           <div className="filter-pills">
-            {["Tous", "En cours", "En pause", "Terminé"].map((filter) => (
+            {["Tous", "En cours", "En pause", "Terminé", "Archivé"].map((filter) => (
               <button
                 className={siteFilter === filter ? "active" : ""}
                 key={filter}
@@ -2247,11 +2705,11 @@ function ModuleView({
                 key={site.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => setSelectedSite(site)}
+                onClick={() => void selectSite(site)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
-                    setSelectedSite(site)
+                    void selectSite(site)
                   }
                 }}
               >
@@ -2264,7 +2722,7 @@ function ModuleView({
                     aria-label={`Ouvrir ${site.name}`}
                     onClick={(event) => {
                       event.stopPropagation()
-                      setSelectedSite(site)
+                      void selectSite(site)
                     }}
                   >
                     <Icon name="chevron" />
@@ -2461,19 +2919,23 @@ function ModuleView({
                   }
                 }}
               >
-                <button
-                  className="task-check"
-                  aria-label={`${
-                    task.status === "Terminée" ? "Rouvrir" : "Terminer"
-                  } ${task.title}`}
+                <select
+                  className="task-status-control"
+                  aria-label={`Statut de ${task.title}`}
+                  value={task.status}
                   disabled={!canUpdateTask(task)}
-                  onClick={(event) => {
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => {
                     event.stopPropagation()
-                    void toggleTaskStatus(task)
+                    void setTaskStatus(task, event.target.value as Task["status"])
                   }}
                 >
-                  <Icon name="check" size={15} />
-                </button>
+                  {(["À faire", "En cours", "Bloquée", "Terminée"] as const).map(
+                    (status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ),
+                  )}
+                </select>
                 <div className="task-main">
                   <span
                     className={`priority priority--${task.priority.toLowerCase()}`}
@@ -2679,7 +3141,7 @@ function ModuleView({
           title="Rapports journaliers"
           description={
             can("validate_reports")
-              ? "Centralisez l’activité terrain et validez les comptes rendus de vos équipes."
+              ? "Examinez les comptes rendus du chantier affecté et publiez-les après contrôle."
               : can("create_reports")
                 ? "Créez les comptes rendus journaliers de vos chantiers."
                 : "Consultez les rapports auxquels votre profil vous donne accès."
@@ -2814,6 +3276,7 @@ function ModuleView({
   }
 
   if (active === "Équipe") {
+    const assignableSites = sites.filter((site) => site.status !== "Archivé")
     const visibleMembers = teamMembers.filter(
       (member) =>
         (teamFilter === "Désactivés"
@@ -2940,12 +3403,12 @@ function ModuleView({
                           disabled={updatingMemberIds.includes(member.id)}
                           onChange={(event) => {
                             const role = event.target.value as ManagedRole
-                            const assignedSite = siteScopedRoles.includes(role)
-                              ? (member.assignedSite ?? sites[0]?.name ?? null)
+                            const assignedSiteId = siteScopedRoles.includes(role)
+                              ? member.assignedSiteId ?? assignableSites[0]?.id ?? null
                               : null
                             void saveMemberAccess(member, {
                               role,
-                              assignedSite,
+                              assignedSiteId,
                             })
                           }}
                         >
@@ -2959,17 +3422,17 @@ function ModuleView({
                       <label>
                         <span>Chantier</span>
                         <select
-                          value={member.assignedSite ?? ""}
+                          value={member.assignedSiteId ?? ""}
                           disabled={updatingMemberIds.includes(member.id)}
                           onChange={(event) =>
                             void saveMemberAccess(member, {
-                              assignedSite: event.target.value || null,
+                              assignedSiteId: event.target.value || null,
                             })
                           }
                         >
                           <option value="">Aucun chantier spécifique</option>
-                          {sites.map((site) => (
-                            <option key={site.id} value={site.name}>
+                          {assignableSites.map((site) => (
+                            <option key={site.id} value={site.id}>
                               {site.name}
                             </option>
                           ))}
@@ -3398,7 +3861,7 @@ function ModuleView({
                   : "Dépense"}{" "}
                 · {entry.status}
               </small>
-              {entry.status === "prévu" && (
+              {entry.status === "prévu" && can("manage_finance") && (
                 <button
                   className="row-action"
                   aria-label={`Marquer comme réalisée : ${entry.description}`}
@@ -3537,6 +4000,22 @@ function ModuleView({
   }
 
   if (active === "Profil") {
+    async function updateSensitiveDataConsent(accepted: boolean) {
+      setConsentSaving(true)
+      try {
+        const result = await api.savePrivacyConsent(accepted)
+        setSensitiveConsent(result.sensitiveDataConsented)
+        onProfileUpdate({ ...user, sensitiveDataConsented: result.sensitiveDataConsented })
+        notify(accepted
+          ? "Votre consentement à un accès support justifié est enregistré."
+          : "Votre consentement à un accès support a été retiré.")
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "Votre choix de consentement n’a pas été enregistré.")
+      } finally {
+        setConsentSaving(false)
+      }
+    }
+
     async function uploadProfilePhoto(event: React.ChangeEvent<HTMLInputElement>) {
       const file = event.currentTarget.files?.[0]
       if (!file) return
@@ -3751,6 +4230,26 @@ function ModuleView({
                 entreprise.
               </p>
             </div>
+            {user.requiresUserConsent && (
+              <label className="permission-summary">
+                <Icon name="lock" />
+                <span>
+                  <strong>Accès support aux données sensibles</strong>
+                  <p>
+                    Votre choix n’autorise que les consultations nécessaires au support et chaque accès est journalisé. Vous pouvez le retirer à tout moment.
+                  </p>
+                  <span className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={sensitiveConsent}
+                      disabled={consentSaving}
+                      onChange={(event) => void updateSensitiveDataConsent(event.target.checked)}
+                    />
+                    <span>{consentSaving ? "Enregistrement…" : "J’autorise un accès support justifié"}</span>
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
           <div className="settings-actions">
             <button
@@ -3784,6 +4283,21 @@ function ModuleView({
     )
     return (
       <div className="module-page">
+        {selectedPlatformTenant && (
+          <DetailDialog
+            title={selectedPlatformTenant.name}
+            onClose={() => setSelectedPlatformTenant(null)}
+          >
+            <dl className="detail-list">
+              <div><dt>Statut</dt><dd>{selectedPlatformTenant.status}</dd></div>
+              <div><dt>Plan</dt><dd>{selectedPlatformTenant.planName ?? "Aucun plan"}</dd></div>
+              <div><dt>Utilisateurs actifs</dt><dd>{selectedPlatformTenant.userCount}</dd></div>
+              <div><dt>Chantiers actifs</dt><dd>{selectedPlatformTenant.activeSiteCount}</dd></div>
+              <div><dt>Chantiers historisés</dt><dd>{selectedPlatformTenant.siteCount - selectedPlatformTenant.activeSiteCount}</dd></div>
+              <div><dt>Créée le</dt><dd>{new Date(selectedPlatformTenant.createdAt).toLocaleDateString("fr-FR")}</dd></div>
+            </dl>
+          </DetailDialog>
+        )}
         {dataError && (
           <div className="auth-error" role="alert">
             {dataError}
@@ -3814,7 +4328,11 @@ function ModuleView({
               <h2>Demandes d’ouverture d’espace</h2>
               <p>Une demande ne crée aucun accès. Vérifiez-la puis créez l’entreprise et son administrateur.</p>
             </div>
-            <strong>{registrationRequests.filter((item) => item.status === "Nouvelle").length} nouvelle(s)</strong>
+            <strong>
+              {loadingData
+                ? "…"
+                : `${registrationRequests.filter((item) => item.status === "Nouvelle").length} nouvelle(s)`}
+            </strong>
           </div>
           {loadingData ? (
             <p role="status">Chargement des demandes…</p>
@@ -3839,11 +4357,18 @@ function ModuleView({
                     onChange={(event) =>
                       void updateRegistrationRequestStatus(
                         request,
-                        event.target.value as RegistrationRequestStatus,
+                        event.target.value as Exclude<
+                          RegistrationRequestStatus,
+                          "Entreprise créée"
+                        >,
                       )
                     }
+                    disabled={request.status === "Entreprise créée"}
                   >
-                    {(["Nouvelle", "En cours", "Entreprise créée", "Refusée"] as const).map((status) => (
+                    {(request.status === "Entreprise créée"
+                      ? ["Entreprise créée"]
+                      : ["Nouvelle", "En cours", "Refusée"]
+                    ).map((status) => (
                       <option key={status} value={status}>{status}</option>
                     ))}
                   </select>
@@ -3860,6 +4385,7 @@ function ModuleView({
                           "Raison sociale": request.companyName,
                           "Nom de l’administrateur": request.adminFullName,
                           "Email administrateur": request.adminEmail,
+                          "Téléphone administrateur": request.phone ?? "",
                         },
                       )
                     }
@@ -3921,7 +4447,39 @@ function ModuleView({
               <article className="table-row" key={tenant.id}>
                 <div>
                   <strong>{tenant.name}</strong>
-                  <small>Tenant isolé · {tenant.siteCount} chantier(s)</small>
+                  <small>Tenant isolé · {tenant.siteCount} chantier(s) · {tenant.status}</small>
+                  <small>
+                    {tenant.renewsAt
+                      ? `Accès valable jusqu’au ${new Date(`${tenant.renewsAt}T00:00:00`).toLocaleDateString("fr-FR")} inclus`
+                      : "Aucune date de fin définie · accès client bloqué"}
+                  </small>
+                  <div className="tenant-row-actions">
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => void showPlatformTenantDetails(tenant)}
+                    >Détails</button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => {
+                        const name = window.prompt("Nom de l’entreprise", tenant.name)
+                        if (name?.trim() && name.trim() !== tenant.name) {
+                          void updatePlatformTenant(tenant, { name: name.trim() })
+                        }
+                      }}
+                    >Modifier</button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => {
+                        const nextStatus = tenant.status === "Archivé" ? "Actif" : "Archivé"
+                        if (window.confirm(`${nextStatus === "Archivé" ? "Archiver" : "Réactiver"} ${tenant.name} ?`)) {
+                          void updatePlatformTenant(tenant, { status: nextStatus })
+                        }
+                      }}
+                    >{tenant.status === "Archivé" ? "Réactiver" : "Archiver"}</button>
+                  </div>
                 </div>
                 <select
                   aria-label={`Plan de ${tenant.name}`}
@@ -3937,6 +4495,14 @@ function ModuleView({
                   <option value="" disabled>
                     Sans plan
                   </option>
+                  {tenant.planId &&
+                    !subscriptionPlans.some(
+                      (item) => item.id === tenant.planId && item.active,
+                    ) && (
+                      <option value={tenant.planId}>
+                        {tenant.planName ?? "Plan indisponible"} · inactif
+                      </option>
+                    )}
                   {subscriptionPlans
                     .filter((item) => item.active)
                     .map((item) => (
@@ -3951,14 +4517,23 @@ function ModuleView({
                 <select
                   aria-label={`Statut de ${tenant.name}`}
                   value={status}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextStatus = event.target
+                      .value as NonNullable<PlatformTenant["subscriptionStatus"]>
+                    if (
+                      nextStatus === "Résilié" &&
+                      !window.confirm(
+                        `Résilier l’abonnement de ${tenant.name} maintenant ? L’accès de toute l’entreprise sera bloqué immédiatement.`,
+                      )
+                    ) {
+                      return
+                    }
                     void updateTenantSubscription(
                       tenant,
                       tenant.planId ?? "",
-                      event.target
-                        .value as NonNullable<PlatformTenant["subscriptionStatus"]>,
+                      nextStatus,
                     )
-                  }
+                  }}
                 >
                   {([
                     "Essai",
@@ -3973,9 +4548,10 @@ function ModuleView({
                   ))}
                 </select>
                 <input
-                  aria-label={`Échéance de ${tenant.name}`}
+                  aria-label={`Fin de validité de ${tenant.name}`}
                   type="date"
                   value={tenant.renewsAt ?? ""}
+                  title="La date indiquée est incluse; les accès sont bloqués à partir du lendemain."
                   onChange={(event) =>
                     void updateTenantSubscription(
                       tenant,
@@ -3988,6 +4564,127 @@ function ModuleView({
               </article>
             )
           })}
+        </section>
+      </div>
+    )
+  }
+
+  if (active === "Utilisateurs") {
+    const pageCount = Math.max(1, Math.ceil(platformUserTotal / 25))
+    return (
+      <div className="module-page">
+        {supportUserDetail && (
+          <DetailDialog title="Mode support temporaire" onClose={() => setSupportUserDetail(null)}>
+            <p>Accès personnel audité. Fermez cette fenêtre dès que le dépannage est terminé.</p>
+            <dl className="detail-list">
+              <div><dt>Nom</dt><dd>{supportUserDetail.fullName}</dd></div>
+              <div><dt>Email</dt><dd>{supportUserDetail.email}</dd></div>
+              <div><dt>Téléphone</dt><dd>{supportUserDetail.phone ?? "Non renseigné"}</dd></div>
+              <div><dt>Rôle</dt><dd>{supportUserDetail.role}</dd></div>
+              <div><dt>Consentement</dt><dd>{supportUserDetail.consented ? "Enregistré" : "Accès d’urgence journalisé"}</dd></div>
+            </dl>
+          </DetailDialog>
+        )}
+        {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+        <SectionHeader
+          eyebrow="Administration de la plateforme"
+          title="Utilisateurs"
+          description="Recherchez, modifiez ou bloquez les comptes. Les coordonnées restent masquées hors mode support justifié."
+          action="Gérer les utilisateurs"
+          icon="team"
+          showAction={false}
+        />
+        <div className="editor-boundary">
+          <Icon name="lock" />
+          <div><strong>Accès personnel contrôlé</strong><p>Chaque consultation support est justifiée et inscrite au journal d’audit. Les mots de passe sont réinitialisés par lien email.</p></div>
+        </div>
+        <div className="module-toolbar">
+          <div className="module-search">
+            <Icon name="search" />
+            <input aria-label="Rechercher un utilisateur" placeholder="Nom, entreprise ou coordonnées…" value={platformUserSearch} onChange={(event) => { setPlatformUserSearch(event.target.value); setPlatformUserPage(1) }} />
+          </div>
+          <select aria-label="Filtrer par statut" value={platformUserStatus} onChange={(event) => { setPlatformUserStatus(event.target.value as typeof platformUserStatus); setPlatformUserPage(1) }}>
+            <option value="all">Tous les comptes</option>
+            <option value="active">Actifs</option>
+            <option value="blocked">Bloqués</option>
+          </select>
+          <select
+            aria-label="Filtrer par rôle"
+            value={platformUserRole}
+            onChange={(event) => {
+              setPlatformUserRole(event.target.value as UserRole | "all")
+              setPlatformUserPage(1)
+            }}
+          >
+            <option value="all">Tous les rôles</option>
+            {(["EDITOR", "ADMIN_ENTERPRISE", "CONDUCTEUR", "CHEF_CHANTIER", "COMPAGNON", "SOUS_TRAITANT", "COMPTABLE", "MAITRE_OUVRAGE"] as const).map((role) => (
+              <option key={role} value={role}>{role}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filtrer par entreprise"
+            value={platformUserTenantId}
+            onChange={(event) => {
+              setPlatformUserTenantId(event.target.value)
+              setPlatformUserPage(1)
+            }}
+          >
+            <option value="all">Toutes les entreprises</option>
+            <option value="platform">Espace éditeur</option>
+            {platformTenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+            ))}
+          </select>
+        </div>
+        <section className="data-panel dossier-list">
+          {loadingData ? <p role="status">Chargement des utilisateurs…</p> : null}
+          {!loadingData && platformUsers.length === 0 ? <p>Aucun compte trouvé.</p> : null}
+          {platformUsers.map((platformUser) => (
+            <article className="table-row" key={platformUser.id}>
+              <div><strong>{platformUser.fullName}</strong><small>{platformUser.tenantName} · {platformUser.role}</small></div>
+              <span>{platformUser.emailMasked}{platformUser.phoneMasked ? ` · ${platformUser.phoneMasked}` : ""}</span>
+              <span>{platformUser.assignedSite ?? "Sans chantier affecté"}</span>
+              <span>{platformUser.active ? "Actif" : "Bloqué"} · consentement {platformUser.sensitiveDataConsented ? "enregistré" : "absent"}</span>
+              <div className="platform-user-actions">
+                <button className="text-button" type="button" onClick={() => void editPlatformUser(platformUser)}>Modifier</button>
+                <button className="text-button" type="button" onClick={() => void openPlatformSupportAccess(platformUser)}>Mode support</button>
+                <button className="text-button" type="button" disabled={!platformUser.active} onClick={() => void resetPlatformUserPassword(platformUser)}>Réinitialiser le mot de passe</button>
+                {platformUser.role !== "EDITOR" && platformUser.id !== user.id && <button className="text-button" type="button" onClick={() => void togglePlatformUser(platformUser)}>{platformUser.active ? "Bloquer" : "Réactiver"}</button>}
+              </div>
+            </article>
+          ))}
+        </section>
+        <div className="pagination-controls">
+          <span>{platformUserTotal} compte(s) · page {platformUserPage} / {pageCount}</span>
+          <button className="secondary-button" type="button" disabled={platformUserPage <= 1} onClick={() => setPlatformUserPage((page) => Math.max(1, page - 1))}>Précédent</button>
+          <button className="secondary-button" type="button" disabled={platformUserPage >= pageCount} onClick={() => setPlatformUserPage((page) => Math.min(pageCount, page + 1))}>Suivant</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (active === "Journal d’audit") {
+    return (
+      <div className="module-page">
+        {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+        <SectionHeader eyebrow="Administration de la plateforme" title="Journal d’audit" description="Historique des opérations sensibles et des accès support." action="Consulter le journal" icon="clipboard" showAction={false} />
+        <div className="module-toolbar">
+          <label>Action
+            <input aria-label="Filtrer par action" placeholder="Toutes les actions" value={auditActionFilter} onChange={(event) => setAuditActionFilter(event.target.value)} />
+          </label>
+        </div>
+        <section className="data-panel dossier-list">
+          {loadingData ? <p role="status">Chargement du journal…</p> : null}
+          {!loadingData && platformAuditLogs.length === 0 ? <p>Aucune opération auditée.</p> : null}
+          {platformAuditLogs.map((entry) => (
+            <article className="table-row" key={entry.id}>
+              <div><strong>{auditActionLabels[entry.action] ?? entry.action}</strong><small>{entry.actorName ?? "Compte clôturé"} · {entry.actorRole}</small></div>
+              <span>{entry.tenantName ?? "Plateforme"}</span>
+              <span>{entry.targetType} · {entry.targetId}</span>
+              <span>{new Date(entry.createdAt).toLocaleString("fr-FR")}</span>
+              <small>{JSON.stringify(entry.payloadMasked)}</small>
+            </article>
+          ))}
         </section>
       </div>
     )
@@ -4036,6 +4733,9 @@ function ModuleView({
         <div className="plan-grid">
           {loadingData ? (
             <p role="status">Chargement des abonnements…</p>
+          ) : null}
+          {!loadingData && !dataError && subscriptionPlans.length === 0 ? (
+            <p>Aucun plan d’abonnement configuré. Créez un plan pour pouvoir ouvrir les espaces clients.</p>
           ) : null}
           {subscriptionPlans.map((plan) => (
             <article
@@ -4099,18 +4799,22 @@ function ModuleView({
           <div>
             <span>Revenu mensuel récurrent</span>
             <strong>
-              {formatFcfa(Number(platformOverview?.monthlyRevenueFcfa ?? 0))}
+              {loadingData
+                ? "…"
+                : platformOverview
+                  ? formatFcfa(Number(platformOverview.monthlyRevenueFcfa))
+                  : "—"}
             </strong>
             <small>Abonnements actifs uniquement</small>
           </div>
           <div>
             <span>Factures en retard</span>
-            <strong>{overdueInvoices.length}</strong>
-            <small>{formatFcfa(overdueAmount)} à recouvrer</small>
+            <strong>{loadingData ? "…" : overdueInvoices.length}</strong>
+            <small>{loadingData ? "…" : `${formatFcfa(overdueAmount)} à recouvrer`}</small>
           </div>
           <div>
             <span>Renouvellements à 30 jours</span>
-            <strong>{renewals}</strong>
+            <strong>{loadingData ? "…" : renewals}</strong>
             <small>Échéances enregistrées</small>
           </div>
         </section>
@@ -4207,7 +4911,7 @@ function ModuleView({
               )}
             </dl>
             <footer>
-              <span>Total à régler</span>
+              <span>Montant de la facture</span>
               <strong>{formatFcfa(Number(invoiceToPrint.amountFcfa))}</strong>
             </footer>
           </article>
@@ -4247,32 +4951,36 @@ function ModuleView({
         <div className="task-summary">
           <div>
             <span>Nouveaux</span>
-            <strong>{newTickets}</strong>
+            <strong>{loadingData ? "…" : newTickets}</strong>
             <small>Tickets à prendre en charge</small>
           </div>
           <div>
             <span>En cours</span>
-            <strong>{activeTickets}</strong>
+            <strong>{loadingData ? "…" : activeTickets}</strong>
             <small>
-              {
+              {loadingData
+                ? "…"
+                : (
                 supportTickets.filter(
                   (ticket) =>
                     ticket.status === "En cours" &&
                     ["Haute", "Urgente"].includes(ticket.priority),
                 ).length
-              }{" "}
+              )}{" "}
               prioritaires
             </small>
           </div>
           <div>
             <span>En attente client</span>
-            <strong>{waitingTickets}</strong>
+            <strong>{loadingData ? "…" : waitingTickets}</strong>
             <small>Relance manuelle</small>
           </div>
           <div className="task-summary__progress">
             <span>Résolus</span>
             <strong>
-              {resolvedTickets} / {supportTickets.length}
+              {loadingData
+                ? "…"
+                : `${resolvedTickets} / ${supportTickets.length}`}
             </strong>
             <div className="progress">
               <i />
@@ -4756,7 +5464,8 @@ function RestrictedDashboard({
           user.capabilities.includes("read_team")
             ? api.team()
             : Promise.resolve([] as TeamMember[]),
-          user.capabilities.includes("manage_finance")
+          user.capabilities.includes("manage_finance") ||
+          user.capabilities.includes("read_finance")
             ? api.finance()
             : Promise.resolve(null),
         ])
@@ -4830,36 +5539,52 @@ function RestrictedDashboard({
         {
           icon: "building",
           label: "Entreprises actives",
-          value: String(platformOverview?.activeTenantCount ?? 0),
-          detail: `${platformOverview?.tenantCount ?? 0} entreprise(s) au total`,
+          value: loading
+            ? "…"
+            : String(platformOverview?.activeTenantCount ?? "—"),
+          detail: loading
+            ? "Chargement des données"
+            : platformOverview
+              ? `${platformOverview.tenantCount} entreprise(s) au total`
+              : "Données indisponibles",
           tone: "orange",
         },
         {
           icon: "wallet",
           label: "Revenu mensuel",
-          value: compactFcfa(platformOverview?.monthlyRevenueFcfa),
-          detail: "Abonnements actifs",
+          value: loading ? "…" : compactFcfa(platformOverview?.monthlyRevenueFcfa),
+          detail: platformOverview
+            ? "Abonnements actifs"
+            : "Données indisponibles",
           tone: "green",
         },
         {
           icon: "alert",
           label: "Tickets ouverts",
-          value: String(platformOverview?.openTicketCount ?? 0),
-          detail: "À traiter par le support",
+          value: loading
+            ? "…"
+            : String(platformOverview?.openTicketCount ?? "—"),
+          detail: platformOverview ? "À traiter par le support" : "Données indisponibles",
           tone: "red",
         },
         {
           icon: "team",
           label: "Utilisateurs actifs",
-          value: String(platformOverview?.activeUserCount ?? 0),
-          detail: `${platformOverview?.trialTenantCount ?? 0} essai(s) en cours`,
+          value: loading
+            ? "…"
+            : String(platformOverview?.activeUserCount ?? "—"),
+          detail: loading
+            ? "Chargement des données"
+            : platformOverview
+              ? `${platformOverview.trialTenantCount} essai(s) en cours`
+              : "Données indisponibles",
           tone: "blue",
         },
       ]
       break
     case "CONDUCTEUR":
       eyebrow = "Pilotage de chantier"
-      description = `Suivez uniquement les opérations de ${user.assignedSite ?? "votre chantier affecté"}.`
+      description = `Coordonnez les opérations et validez les rapports de ${user.assignedSite ?? "votre chantier affecté"}.`
       metrics = [
         {
           icon: "building",
@@ -4893,7 +5618,7 @@ function RestrictedDashboard({
       break
     case "CHEF_CHANTIER":
       eyebrow = "Poste de commandement"
-      description = `Vous pilotez le chantier ${user.assignedSite ?? "qui vous est affecté"}.`
+      description = `Organisez le travail quotidien et rédigez les rapports de ${user.assignedSite ?? "votre chantier affecté"}.`
       metrics = [
         {
           icon: "team",
@@ -4918,9 +5643,9 @@ function RestrictedDashboard({
         },
         {
           icon: "clipboard",
-          label: "Rapports à valider",
+          label: "Rapports en attente",
           value: String(pendingReports.length),
-          detail: `${reports.length} rapport(s) sur ce chantier`,
+          detail: "À examiner par le conducteur",
           tone: "red",
         },
       ]
@@ -4998,9 +5723,9 @@ function RestrictedDashboard({
       ]
       break
     case "COMPTABLE":
-      eyebrow = "Suivi administratif"
+      eyebrow = "Pilotage comptable"
       description =
-        "Suivez les opérations financières et les rapports validés de l’entreprise."
+        "Gérez les encaissements, dépenses, dossiers de paiement et rapports validés de l’entreprise."
       metrics = [
         {
           icon: "wallet",
@@ -5170,7 +5895,7 @@ function RestrictedDashboard({
             <div>
               <h3>
                 {user.role === "EDITOR"
-                  ? "Activité récente"
+                  ? "Pilotage de la plateforme"
                   : user.role === "COMPTABLE"
                     ? "Dossiers prioritaires"
                     : "Votre périmètre"}
@@ -5321,12 +6046,24 @@ function Dashboard({
     values: Record<string, string>,
   ) {
     if (action.kind === "site") {
-      await api.createSite({
-        name: values["Nom du chantier"] ?? "",
-        location: values.Localisation ?? "",
-      })
+      if (action.id) {
+        await api.updateSite(action.id, {
+          name: values["Nom du chantier"] ?? "",
+          location: values.Localisation ?? "",
+          status: (values.Statut ?? "En cours") as NonNullable<Site["status"]>,
+          progress: Number(values["Progression (%)"] ?? 0),
+          budgetFcfa: Number(values["Budget FCFA"] ?? 0),
+          startDate: values["Date de début"] || null,
+          endDate: values["Date de fin"] || null,
+        })
+      } else {
+        await api.createSite({
+          name: values["Nom du chantier"] ?? "",
+          location: values.Localisation ?? "",
+        })
+      }
       setDataRevision((revision) => revision + 1)
-      setToast("Chantier créé.")
+      setToast(action.id ? "Chantier mis à jour." : "Chantier créé.")
       return
     }
     if (action.kind === "report") {
@@ -5353,12 +6090,19 @@ function Dashboard({
       if (!selectedRole) {
         throw new Error("Sélectionnez un rôle valide.")
       }
+      const assignedSiteId = values.assignedSiteId || null
+      if (
+        siteScopedRoles.includes(selectedRole.value) &&
+        !assignedSiteId
+      ) {
+        throw new Error("Sélectionnez un chantier pour ce rôle.")
+      }
       const member = await api.createTeamMember({
         fullName: values["Nom complet"] ?? "",
         email: values["Email professionnel"] ?? "",
         phone: values.Téléphone?.trim() || null,
         role: selectedRole.value,
-        assignedSite: values.assignedSite || null,
+        assignedSiteId,
         temporaryPassword: values["Mot de passe provisoire"] ?? "",
       })
       setDataRevision((revision) => revision + 1)
@@ -5464,22 +6208,14 @@ function Dashboard({
         name: values["Raison sociale"] ?? "",
         adminFullName: values["Nom de l’administrateur"] ?? "",
         adminEmail: values["Email administrateur"] ?? "",
+        phone: values["Téléphone administrateur"] || null,
         temporaryPassword: values["Mot de passe provisoire"] ?? "",
+        planId: values.planId ?? "",
+        ...(action.id ? { registrationRequestId: action.id } : {}),
       })
-      if (action.id) {
-        try {
-          await api.updateRegistrationRequest(action.id, "Entreprise créée")
-        } catch {
-          setToast(
-            `Entreprise ${tenant.name} créée, mais la demande n’a pas été mise à jour. Vérifiez-la dans le back-office.`,
-          )
-          setDataRevision((revision) => revision + 1)
-          return
-        }
-      }
       setDataRevision((revision) => revision + 1)
       setToast(
-        `Entreprise ${tenant.name} créée en essai. Le compte administrateur ${values["Email administrateur"]} est prêt.`,
+        `Entreprise ${tenant.name} créée en essai de 14 jours. Le compte administrateur ${values["Email administrateur"]} est prêt; remettez-lui le mot de passe provisoire par un canal sécurisé.`,
       )
       return
     }
@@ -5840,6 +6576,10 @@ export default function App() {
 
   if (window.location.pathname === "/inscription") {
     return <RegistrationPage />
+  }
+
+  if (window.location.pathname === "/reinitialiser-mot-de-passe") {
+    return <PasswordResetPage />
   }
 
   if (window.location.pathname === "/connexion") {
