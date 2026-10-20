@@ -17,6 +17,7 @@ import { writeAuditLog } from "../audit-log.js"
 import type { AuthenticatedRequest } from "../types.js"
 
 import { getPlatformRequestLimit } from "../platform-settings.js"
+import { tenantStorageCapacity } from "../storage.js"
 
 import {
   authenticate,
@@ -133,7 +134,8 @@ router.post("/password-reset/complete", passwordResetLimiter, async (request, re
     }
     const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
     await client.query(
-      `UPDATE users SET password_hash = $1, session_version = session_version + 1
+      `UPDATE users SET password_hash = $1, must_change_password = false,
+              session_version = session_version + 1
        WHERE id = $2 AND active = true`,
       [passwordHash, reset.user_id],
     )
@@ -224,6 +226,65 @@ router.post("/login", loginLimiter, async (request, response) => {
   response.json({ user: publicUser(user) })
 })
 
+router.post("/first-password", authenticate, async (request, response) => {
+  const parsed = z.object({
+    newPassword: z.string().min(12).max(128),
+  }).safeParse(request.body)
+  if (!parsed.success) {
+    response.status(400).json({ error: "Le nouveau mot de passe doit contenir au moins 12 caractères." })
+    return
+  }
+
+  const user = request.authUser!
+  if (!user.mustChangePassword) {
+    response.status(409).json({ error: "Aucun changement obligatoire n’est en attente." })
+    return
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    const current = await client.query<{ password_hash: string }>(
+      "SELECT password_hash FROM users WHERE id = $1 AND active = true AND must_change_password = true FOR UPDATE",
+      [user.id],
+    )
+    if (!current.rowCount) {
+      await client.query("ROLLBACK")
+      response.status(409).json({ error: "Le compte ne nécessite plus de changement de mot de passe." })
+      return
+    }
+    if (await bcrypt.compare(parsed.data.newPassword, current.rows[0].password_hash)) {
+      await client.query("ROLLBACK")
+      response.status(400).json({ error: "Choisissez un mot de passe différent du mot de passe provisoire." })
+      return
+    }
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
+    await client.query(
+      `UPDATE users
+       SET password_hash = $1, must_change_password = false,
+           session_version = session_version + 1
+       WHERE id = $2`,
+      [passwordHash, user.id],
+    )
+    await writeAuditLog(client, request, {
+      actorId: user.id,
+      actorRole: user.role,
+      tenantId: user.tenantId,
+      targetType: "user",
+      targetId: user.id,
+      action: "FIRST_PASSWORD_CHANGED",
+    })
+    await client.query("COMMIT")
+    clearSession(response)
+    response.status(204).end()
+  } catch (error) {
+    await client.query("ROLLBACK")
+    throw error
+  } finally {
+    client.release()
+  }
+})
+
 router.get("/profile/photo", authenticate, async (request, response) => {
   const result = await pool.query<{
     profile_photo_data: Buffer | null
@@ -271,18 +332,45 @@ router.put("/profile/photo", authenticate, async (request, response) => {
     return
   }
 
-  const updated = await pool.query(
-    `UPDATE users
-     SET profile_photo_data = $1, profile_photo_content_type = $2
-     WHERE id = $3 AND active = true
-     RETURNING id`,
-    [image, contentType, request.authUser!.id],
-  )
-  if (!updated.rowCount) {
-    response.status(401).json({ error: "Votre compte n’est plus actif." })
-    return
+  const user = request.authUser!
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    if (user.tenantId) {
+      const capacity = await tenantStorageCapacity(
+        client,
+        user.tenantId,
+        image.length,
+        user.id,
+      )
+      if (!capacity.allowed) {
+        await client.query("ROLLBACK")
+        response.status(409).json({
+          error: `La limite de stockage du plan (${capacity.maxStorageMb} Mo) est atteinte.`,
+        })
+        return
+      }
+    }
+    const updated = await client.query(
+      `UPDATE users
+       SET profile_photo_data = $1, profile_photo_content_type = $2
+       WHERE id = $3 AND active = true
+       RETURNING id`,
+      [image, contentType, user.id],
+    )
+    if (!updated.rowCount) {
+      await client.query("ROLLBACK")
+      response.status(401).json({ error: "Votre compte n’est plus actif." })
+      return
+    }
+    await client.query("COMMIT")
+    response.json({ data: { profilePhotoUrl: "/api/auth/profile/photo" } })
+  } catch (error) {
+    await client.query("ROLLBACK")
+    throw error
+  } finally {
+    client.release()
   }
-  response.json({ data: { profilePhotoUrl: "/api/auth/profile/photo" } })
 })
 
 router.delete("/profile/photo", authenticate, async (request, response) => {

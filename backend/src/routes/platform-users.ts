@@ -1,3 +1,5 @@
+import bcrypt from "bcryptjs"
+
 import { Router } from "express"
 import { z } from "zod"
 import { authenticate } from "../auth.js"
@@ -55,6 +57,7 @@ router.get("/", async (request, response) => {
       `SELECT u.id, u.full_name AS "fullName", u.email, u.phone,
               u.role, u.active, u.tenant_id AS "tenantId", u.tenant_name AS "tenantName",
               u.assigned_site_id AS "assignedSiteId", s.name AS "assignedSite",
+              u.must_change_password AS "mustChangePassword",
               u.requires_user_consent AS "requiresUserConsent",
               (u.sensitive_data_consented_at IS NOT NULL) AS "sensitiveDataConsented",
               u.created_at AS "createdAt"
@@ -254,6 +257,103 @@ router.patch("/:id/status", async (request, response) => {
     })
     await client.query("COMMIT")
     response.json({ data: result.rows[0] })
+  } catch (error) {
+    await client.query("ROLLBACK")
+    throw error
+  } finally {
+    client.release()
+  }
+})
+
+router.post("/:id/sessions/revoke", async (request, response) => {
+  const id = z.uuid().safeParse(request.params.id)
+  if (!id.success) {
+    response.status(400).json({ error: "Identifiant de compte invalide." })
+    return
+  }
+  const actor = (request as AuthenticatedRequest).authUser
+  if (id.data === actor.id) {
+    response.status(400).json({ error: "Vous ne pouvez pas révoquer votre propre session depuis cette action." })
+    return
+  }
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    const result = await client.query<{ tenant_id: string | null }>(
+      `UPDATE users SET session_version = session_version + 1
+       WHERE id = $1 AND active = true AND role <> 'EDITOR'
+       RETURNING tenant_id`,
+      [id.data],
+    )
+    if (!result.rowCount) {
+      await client.query("ROLLBACK")
+      response.status(404).json({ error: "Compte actif introuvable ou protégé." })
+      return
+    }
+    await writeAuditLog(client, request, {
+      actorId: actor.id,
+      actorRole: actor.role,
+      tenantId: result.rows[0].tenant_id,
+      targetType: "user",
+      targetId: id.data,
+      action: "USER_SESSIONS_REVOKED",
+    })
+    await client.query("COMMIT")
+    response.status(204).end()
+  } catch (error) {
+    await client.query("ROLLBACK")
+    throw error
+  } finally {
+    client.release()
+  }
+})
+
+router.post("/:id/temporary-password", async (request, response) => {
+  const id = z.uuid().safeParse(request.params.id)
+  const parsed = z.object({
+    temporaryPassword: z.string().min(12).max(128),
+  }).safeParse(request.body)
+  if (!id.success || !parsed.success) {
+    response.status(400).json({ error: "Mot de passe provisoire invalide." })
+    return
+  }
+  const actor = (request as AuthenticatedRequest).authUser
+  if (id.data === actor.id) {
+    response.status(400).json({ error: "Utilisez les paramètres de votre compte pour changer votre propre mot de passe." })
+    return
+  }
+  const passwordHash = await bcrypt.hash(parsed.data.temporaryPassword, 12)
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    const result = await client.query<{ tenant_id: string | null }>(
+      `UPDATE users
+       SET password_hash = $1, must_change_password = true,
+           session_version = session_version + 1
+       WHERE id = $2 AND active = true AND role <> 'EDITOR'
+       RETURNING tenant_id`,
+      [passwordHash, id.data],
+    )
+    if (!result.rowCount) {
+      await client.query("ROLLBACK")
+      response.status(404).json({ error: "Compte actif introuvable ou protégé." })
+      return
+    }
+    await client.query(
+      "UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL",
+      [id.data],
+    )
+    await writeAuditLog(client, request, {
+      actorId: actor.id,
+      actorRole: actor.role,
+      tenantId: result.rows[0].tenant_id,
+      targetType: "user",
+      targetId: id.data,
+      action: "TEMPORARY_PASSWORD_ISSUED",
+      payloadMasked: { mustChangePassword: true },
+    })
+    await client.query("COMMIT")
+    response.status(204).end()
   } catch (error) {
     await client.query("ROLLBACK")
     throw error

@@ -43,6 +43,48 @@ type PendingAction = {
   initialValues?: Record<string, string>
 } | null
 
+function generateTemporaryPassword() {
+  const groups = [
+    "ABCDEFGHJKLMNPQRSTUVWXYZ",
+    "abcdefghijkmnopqrstuvwxyz",
+    "23456789",
+    "!@#$%&*-_=+?",
+  ]
+  const allCharacters = groups.join("")
+  const values = new Uint32Array(20)
+  crypto.getRandomValues(values)
+  const password = groups.map((group, index) => group[values[index]! % group.length]!)
+  for (let index = groups.length; index < values.length; index += 1) {
+    password.push(allCharacters[values[index]! % allCharacters.length]!)
+  }
+  for (let index = password.length - 1; index > 0; index -= 1) {
+    const random = new Uint32Array(1)
+    crypto.getRandomValues(random)
+    const swap = random[0]! % (index + 1)
+    ;[password[index], password[swap]] = [password[swap]!, password[index]!]
+  }
+  return password.join("")
+}
+
+function dateInputValue(value: string | null | undefined) {
+  if (!value) return ""
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})/.exec(value)?.[1]
+  if (dateOnly) return dateOnly
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ""
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, "0")
+  const day = String(parsed.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function formatDateOnly(value: string | null | undefined) {
+  const normalized = dateInputValue(value)
+  if (!normalized) return "Date non définie"
+  const [year, month, day] = normalized.split("-").map(Number)
+  return new Date(year!, month! - 1, day!).toLocaleDateString("fr-FR")
+}
+
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
     alert: (
@@ -580,6 +622,10 @@ function StandaloneLogin({
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(true)
   const [visible, setVisible] = useState(false)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
+  const [passwordChanged, setPasswordChanged] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -588,8 +634,22 @@ function StandaloneLogin({
     setError("")
     setLoading(true)
     try {
+      if (mustChangePassword) {
+        if (newPassword !== confirmPassword) {
+          throw new Error("Les deux nouveaux mots de passe ne correspondent pas.")
+        }
+        await api.completeFirstPasswordChange(newPassword)
+        setPasswordChanged(true)
+        setNewPassword("")
+        setConfirmPassword("")
+        return
+      }
       const user = await api.login(identifier, password, rememberMe)
-      await onLogin(user, rememberMe)
+      if (user.mustChangePassword) {
+        setMustChangePassword(true)
+      } else {
+        await onLogin(user, rememberMe)
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -618,9 +678,59 @@ function StandaloneLogin({
         <form className="auth-page__card" onSubmit={(event) => void submit(event)}>
           <div className="landing-auth-card__heading">
             <span className="landing-eyebrow">Espace sécurisé</span>
-            <h2>Connexion</h2>
-            <p>Accédez à l’espace de votre entreprise.</p>
+            <h2>{passwordChanged ? "Mot de passe modifié" : mustChangePassword ? "Sécurisez votre compte" : "Connexion"}</h2>
+            <p>
+              {passwordChanged
+                ? "Reconnectez-vous avec votre nouveau mot de passe."
+                : mustChangePassword
+                  ? "Votre mot de passe provisoire doit être remplacé avant d’accéder à la plateforme."
+                  : "Accédez à l’espace de votre entreprise."}
+            </p>
           </div>
+          {passwordChanged ? (
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                setPasswordChanged(false)
+                setMustChangePassword(false)
+                setPassword("")
+              }}
+            >
+              Retour à la connexion
+            </button>
+          ) : mustChangePassword ? (
+            <>
+              <label>
+                <span>Nouveau mot de passe (12 caractères minimum)</span>
+                <input
+                  autoComplete="new-password"
+                  type={visible ? "text" : "password"}
+                  minLength={12}
+                  maxLength={128}
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Confirmer le nouveau mot de passe</span>
+                <input
+                  autoComplete="new-password"
+                  type={visible ? "text" : "password"}
+                  minLength={12}
+                  maxLength={128}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                />
+              </label>
+              <button className="text-button" type="button" onClick={() => setVisible((current) => !current)}>
+                {visible ? "Masquer les mots de passe" : "Afficher les mots de passe"}
+              </button>
+            </>
+          ) : (
+          <>
           <label>
             <span>Email ou numéro de téléphone</span>
             <div className="field">
@@ -693,6 +803,14 @@ function StandaloneLogin({
           <p className="auth-page__switch">
             Mot de passe oublié ? <a href="/reinitialiser-mot-de-passe">Recevoir un lien de réinitialisation</a>
           </p>
+          </>
+          )}
+          {passwordChanged && <p className="landing-contact-card__feedback" role="status">Votre nouveau mot de passe est enregistré.</p>}
+          {mustChangePassword && !passwordChanged && (
+            <button className="primary-button" type="submit" disabled={loading}>
+              {loading ? "Enregistrement…" : "Enregistrer mon nouveau mot de passe"}
+            </button>
+          )}
         </form>
       </section>
     </main>
@@ -906,6 +1024,22 @@ const sectionIcons: Record<string, IconName> = {
 }
 
 const auditActionLabels: Record<string, string> = {
+  TEMPORARY_PASSWORD_ISSUED: "Mot de passe provisoire défini",
+  FIRST_PASSWORD_CHANGED: "Mot de passe initial modifié",
+  USER_SESSIONS_REVOKED: "Sessions utilisateur révoquées",
+  TENANT_CREATED: "Entreprise créée",
+  TENANT_UPDATED: "Entreprise modifiée",
+  TENANT_SUBSCRIPTION_UPDATED: "Abonnement mis à jour",
+  SUBSCRIPTION_PLAN_UPDATED: "Plan modifié",
+  USER_PROFILE_UPDATED: "Compte utilisateur modifié",
+  USER_BLOCKED: "Compte utilisateur bloqué",
+  USER_UNBLOCKED: "Compte utilisateur réactivé",
+  TEAM_MEMBER_CREATED: "Membre d’équipe créé",
+  TEAM_MEMBER_UPDATED: "Membre d’équipe modifié",
+  TEAM_MEMBER_PROFILE_UPDATED: "Profil de membre modifié",
+  TEAM_MEMBER_DEACTIVATED: "Membre d’équipe désactivé",
+  PASSWORD_RESET_COMPLETED: "Mot de passe réinitialisé",
+  PASSWORD_RESET_REQUESTED: "Réinitialisation demandée",
   ATTENDANCE_CLOCKED_IN: "Arrivée enregistrée",
   ATTENDANCE_CLOCKED_OUT: "Départ enregistré",
   FINANCE_ENTRY_CREATED: "Écriture financière créée",
@@ -934,7 +1068,9 @@ const actionFields: Record<ActionKind, {
   ],
   task: [
     { label: "Tâche", placeholder: "Travail à réaliser" },
-    { label: "Échéance", placeholder: "Date prévue", type: "date" },
+    { label: "Description", placeholder: "Consignes et résultat attendu", required: false },
+    { label: "Catégorie", placeholder: "Ex. Préparation, gros œuvre…", required: false },
+    { label: "Échéance", placeholder: "Date prévue", type: "date", required: false },
   ],
   photo: [{ label: "Légende", placeholder: "Décrivez la preuve terrain" }],
   report: [
@@ -1022,6 +1158,13 @@ const actionFields: Record<ActionKind, {
       required: false,
       min: 1,
     },
+    {
+      label: "Limite stockage (Mo)",
+      placeholder: "Illimité si vide",
+      type: "number",
+      required: false,
+      min: 1,
+    },
   ],
   ticket: [
     { label: "Objet", placeholder: "Décrivez brièvement la demande" },
@@ -1046,7 +1189,7 @@ const siteScopedRoles: ManagedRole[] = [
 
 const actionGuideByKind: Record<ActionKind, string> = {
   site: "Mode administration : créez un chantier avec son nom et sa localisation pour organiser le terrain.",
-  task: "Mode terrain : décrivez la tâche et sa date d’échéance pour aider l’équipe à avancer sans ambiguïté.",
+  task: "Coordonnez votre chantier : précisez la priorité, les consignes, l’échéance et le membre responsable.",
   photo: "Mode terrain : ajoutez une preuve visuelle avec une légende et, si besoin, votre position GPS.",
   report: "Mode terrain : résumez les travaux, l’effectif présent et la date pour valider l’avancement du chantier.",
   member: "Mode administration : créez le compte, définissez le rôle et l’affectation chantier pour sécuriser l’accès.",
@@ -1109,6 +1252,9 @@ function ActionDialog({
   ) => Promise<void>
 }) {
   const [taskSites, setTaskSites] = useState<Site[]>([])
+  const [taskMembers, setTaskMembers] = useState<TeamMember[]>([])
+  const [taskSiteId, setTaskSiteId] = useState("")
+  const [taskAssigneeId, setTaskAssigneeId] = useState("")
   const [platformTenants, setPlatformTenants] = useState<PlatformTenant[]>([])
   const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([])
   const [platformUserSearch, setPlatformUserSearch] = useState("")
@@ -1126,9 +1272,17 @@ function ActionDialog({
   const [taskSitesError, setTaskSitesError] = useState("")
   const [submitError, setSubmitError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [temporaryPassword, setTemporaryPassword] = useState("")
+  const [passwordConfirmation, setPasswordConfirmation] = useState("")
 
   useEffect(() => {
     if (action?.kind === "member") setMemberRole("COMPAGNON")
+    if (action?.kind === "member" || action?.kind === "tenant") {
+      setTemporaryPassword("")
+      setPasswordConfirmation("")
+      setPasswordVisible(false)
+    }
   }, [action?.kind])
 
   useEffect(() => {
@@ -1145,11 +1299,24 @@ function ActionDialog({
     let activeRequest = true
     setTaskSitesLoading(true)
     setTaskSitesError("")
-    api
-      .sites()
-      .then((result) => {
-        if (activeRequest) setTaskSites(result)
-      })
+    const loadSites =
+      action.kind === "task"
+        ? Promise.all([api.sites(), api.team()]).then(([result, members]) => {
+            if (!activeRequest) return
+            setTaskSites(result)
+            setTaskMembers(members)
+            setTaskSiteId(
+              user.assignedSiteId &&
+                result.some((site) => site.id === user.assignedSiteId)
+                ? user.assignedSiteId
+                : "",
+            )
+            setTaskAssigneeId("")
+          })
+        : api.sites().then((result) => {
+            if (activeRequest) setTaskSites(result)
+          })
+    loadSites
       .catch((error: unknown) => {
         if (activeRequest) {
           setTaskSitesError(
@@ -1165,7 +1332,7 @@ function ActionDialog({
     return () => {
       activeRequest = false
     }
-  }, [action?.kind])
+  }, [action?.kind, user.assignedSiteId])
 
   useEffect(() => {
     if (action?.kind !== "tenant") return
@@ -1243,6 +1410,13 @@ function ActionDialog({
   const selectableTaskSites = user.capabilities.includes("read_company")
     ? taskSites
     : taskSites.filter((site) => site.name === user.assignedSite)
+  const assignableTaskMembers = taskMembers.filter(
+    (member) =>
+      member.active &&
+      (member.role === "ADMIN_ENTERPRISE" ||
+        !siteScopedRoles.includes(member.role) ||
+        member.assignedSiteId === taskSiteId),
+  )
   const visibleFields =
     action.kind === "site"
       ? action.id
@@ -1258,7 +1432,9 @@ function ActionDialog({
         ? fields.slice(0, 5)
       : action.kind === "plan"
         ? fields
-        : fields.slice(0, action.kind === "report" ? 3 : 2)
+        : action.kind === "task"
+          ? fields
+          : fields.slice(0, action.kind === "report" ? 3 : 2)
   const requiredTailField =
     action.kind === "member" || action.kind === "tenant"
       ? fields[fields.length - 1]
@@ -1300,7 +1476,7 @@ function ActionDialog({
         }
       }
       if (
-        action.kind === "tenant" &&
+        (action.kind === "tenant" || action.kind === "member") &&
         values["Mot de passe provisoire"] !==
           values["Confirmer le mot de passe provisoire"]
       ) {
@@ -1396,6 +1572,14 @@ function ActionDialog({
                     </option>
                   ))}
                 </select>
+              ) : action.kind === "task" && field.label === "Description" ? (
+                <textarea
+                  name={field.label}
+                  placeholder={field.placeholder}
+                  required={false}
+                  maxLength={4000}
+                  rows={3}
+                />
               ) : (
                 <input
                   name={field.label}
@@ -1416,31 +1600,40 @@ function ActionDialog({
               <span>{requiredTailField.label}</span>
               <input
                 name={requiredTailField.label}
-                type={requiredTailField.type ?? "text"}
+                type={passwordVisible ? "text" : requiredTailField.type ?? "text"}
                 placeholder={requiredTailField.placeholder}
                 required={requiredTailField.required ?? true}
                 minLength={requiredTailField.minLength}
-                defaultValue={action.initialValues?.[requiredTailField.label]}
+                value={temporaryPassword}
+                onChange={(event) => setTemporaryPassword(event.target.value)}
                 autoComplete={action.kind === "tenant" ? "new-password" : undefined}
               />
-              {action.kind === "tenant" && (
-                <small>
-                  Choisissez le mot de passe provisoire à remettre à
-                  l’administrateur par un canal sécurisé.
-                </small>
-              )}
+              <div className="form-inline-actions">
+                <button className="text-button" type="button" onClick={() => setTemporaryPassword(generateTemporaryPassword())}>
+                  Générer
+                </button>
+                <button className="text-button" type="button" onClick={() => setPasswordVisible((visible) => !visible)}>
+                  {passwordVisible ? "Masquer" : "Afficher"}
+                </button>
+              </div>
+              <small>
+                Mot de passe provisoire à transmettre par un canal privé et sécurisé.
+                Le changement sera obligatoire à la première connexion.
+              </small>
             </label>
           )}
-          {action.kind === "tenant" && (
+          {(action.kind === "tenant" || action.kind === "member") && (
             <label>
               <span>Confirmer le mot de passe provisoire</span>
               <input
                 name="Confirmer le mot de passe provisoire"
-                type="password"
+                type={passwordVisible ? "text" : "password"}
                 placeholder="Saisissez-le à nouveau"
                 required
                 minLength={12}
                 autoComplete="new-password"
+                value={passwordConfirmation}
+                onChange={(event) => setPasswordConfirmation(event.target.value)}
               />
             </label>
           )}
@@ -1503,8 +1696,58 @@ function ActionDialog({
                 </select>
               </label>
             </>
-          ) : action.kind === "task" ||
-            action.kind === "report" ||
+          ) : action.kind === "task" ? (
+            <>
+              <label>
+                <span>Chantier</span>
+                <select
+                  name="siteId"
+                  value={taskSiteId}
+                  required
+                  disabled={taskSitesLoading || selectableTaskSites.length === 0}
+                  onChange={(event) => {
+                    setTaskSiteId(event.target.value)
+                    setTaskAssigneeId("")
+                  }}
+                >
+                  <option value="" disabled>
+                    {taskSitesLoading
+                      ? "Chargement des chantiers…"
+                      : "Choisir un chantier"}
+                  </option>
+                  {selectableTaskSites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Responsable (facultatif)</span>
+                <select
+                  name="assignedTo"
+                  value={taskAssigneeId}
+                  disabled={!taskSiteId}
+                  onChange={(event) => setTaskAssigneeId(event.target.value)}
+                >
+                  <option value="">À définir par l’équipe</option>
+                  {assignableTaskMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.fullName} · {member.roleLabel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Priorité</span>
+                <select name="priority" defaultValue="Normale" required>
+                  {(["Basse", "Normale", "Haute", "Urgente"] as const).map((priority) => (
+                    <option key={priority} value={priority}>{priority}</option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : action.kind === "report" ||
             action.kind === "payment" ? (
             <label>
               <span>Chantier</span>
@@ -1683,15 +1926,17 @@ function MetricCard({
   value,
   detail,
   tone,
+  onClick,
 }: {
   icon: IconName
   label: string
   value: string
   detail: string
   tone: string
+  onClick?: () => void
 }) {
-  return (
-    <article className="metric-card">
+  const content = (
+    <>
       <span className={`metric-card__icon metric-card__icon--${tone}`}>
         <Icon name={icon} />
       </span>
@@ -1700,6 +1945,20 @@ function MetricCard({
         <strong>{value}</strong>
         <small>{detail}</small>
       </div>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button className="metric-card metric-card--interactive" onClick={onClick} type="button">
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <article className="metric-card">
+      {content}
     </article>
   )
 }
@@ -1765,6 +2024,473 @@ function DetailDialog({
           </button>
         </div>
         <div className="detail-modal__content">{children}</div>
+      </section>
+    </div>
+  )
+}
+
+function TemporaryPasswordDialog({
+  user,
+  onClose,
+  onConfirm,
+}: {
+  user: PlatformUser
+  onClose: () => void
+  onConfirm: (password: string) => Promise<void>
+}) {
+  const [password, setPassword] = useState(generateTemporaryPassword)
+  const [confirmation, setConfirmation] = useState("")
+  const [visible, setVisible] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (password !== confirmation) {
+      setError("Les deux mots de passe ne correspondent pas.")
+      return
+    }
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm(password)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Le mot de passe n’a pas pu être réinitialisé.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="temporary-password-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="action-modal__heading">
+          <div>
+            <span className="eyebrow">Réinitialisation sécurisée</span>
+            <h2 id="temporary-password-title">Mot de passe provisoire</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <form className="detail-modal__content" onSubmit={(event) => void submit(event)}>
+          <p>Pour {user.fullName} ({user.emailMasked}). L’accès sera révoqué et le changement sera obligatoire à sa prochaine connexion. Transmettez le mot de passe par un canal privé.</p>
+          <label>
+            <span>Nouveau mot de passe (12 caractères minimum)</span>
+            <input
+              autoComplete="new-password"
+              type={visible ? "text" : "password"}
+              minLength={12}
+              maxLength={128}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          <div className="form-inline-actions">
+            <button className="text-button" type="button" onClick={() => {
+              setPassword(generateTemporaryPassword())
+              setConfirmation("")
+            }}>Générer un autre</button>
+            <button className="text-button" type="button" onClick={() => setVisible((current) => !current)}>
+              {visible ? "Masquer" : "Afficher"}
+            </button>
+          </div>
+          <label>
+            <span>Confirmer le mot de passe</span>
+            <input
+              autoComplete="new-password"
+              type={visible ? "text" : "password"}
+              minLength={12}
+              maxLength={128}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              required
+            />
+          </label>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="submit" disabled={loading}>
+              {loading ? "Réinitialisation…" : "Réinitialiser"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function EditPlatformUserDialog({
+  user,
+  onClose,
+  onConfirm,
+}: {
+  user: PlatformUser
+  onClose: () => void
+  onConfirm: (input: { fullName: string; email?: string; phone?: string }) => Promise<void>
+}) {
+  const [fullName, setFullName] = useState(user.fullName)
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoading(true)
+    setError("")
+    try {
+      const input: { fullName: string; email?: string; phone?: string } = {
+        fullName: fullName.trim(),
+      }
+      if (email.trim()) input.email = email.trim()
+      if (phone.trim()) input.phone = phone.trim()
+      await onConfirm(input)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Le compte n’a pas pu être modifié.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-platform-user-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="action-modal__heading">
+          <div>
+            <span className="eyebrow">Compte utilisateur</span>
+            <h2 id="edit-platform-user-title">Modifier le profil</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <form className="detail-modal__content" onSubmit={(event) => void submit(event)}>
+          <p>Pour {user.emailMasked}. L’adresse actuelle et le téléphone sont masqués ; laissez les champs vides pour les conserver.</p>
+          <label>
+            <span>Nom complet</span>
+            <input value={fullName} onChange={(event) => setFullName(event.target.value)} minLength={2} maxLength={120} required />
+          </label>
+          <label>
+            <span>Nouvelle adresse email <small>Facultatif</small></span>
+            <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} placeholder="Laisser vide pour conserver l’adresse actuelle" />
+          </label>
+          <label>
+            <span>Nouveau téléphone <small>Facultatif</small></span>
+            <input type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} placeholder="Laisser vide pour conserver le numéro actuel" />
+          </label>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="submit" disabled={loading}>
+              {loading ? "Enregistrement…" : "Enregistrer"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function PlatformSupportAccessDialog({
+  user,
+  onClose,
+  onConfirm,
+}: {
+  user: PlatformUser
+  onClose: () => void
+  onConfirm: (justification: string, emergencyOverride: boolean) => Promise<void>
+}) {
+  const [justification, setJustification] = useState("")
+  const [emergencyAcknowledged, setEmergencyAcknowledged] = useState(false)
+  const [emergencyRequired, setEmergencyRequired] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (emergencyRequired && !emergencyAcknowledged) {
+      setError("Confirmez que cet accès d’urgence est nécessaire et sera journalisé.")
+      return
+    }
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm(justification.trim(), emergencyRequired)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "L’accès support a été refusé."
+      if (!emergencyRequired && message.toLocaleLowerCase("fr-FR").includes("consentement")) {
+        setEmergencyRequired(true)
+        setError("Le consentement de l’utilisateur n’est pas enregistré. Si l’intervention est indispensable, fournissez une justification détaillée pour demander un accès d’urgence audité.")
+      } else {
+        setError(message)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="platform-support-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="action-modal__heading">
+          <div>
+            <span className="eyebrow">Accès exceptionnel et audité</span>
+            <h2 id="platform-support-title">Mode support</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <form className="detail-modal__content" onSubmit={(event) => void submit(event)}>
+          <p>Consultation des coordonnées de {user.fullName} ({user.emailMasked}). Une justification est obligatoire et sera inscrite au journal d’audit.</p>
+          <label>
+            <span>{emergencyRequired ? "Justification d’urgence (20 caractères minimum)" : "Justification (12 caractères minimum)"}</span>
+            <textarea
+              value={justification}
+              onChange={(event) => setJustification(event.target.value)}
+              minLength={emergencyRequired ? 20 : 12}
+              maxLength={1000}
+              rows={4}
+              required
+            />
+          </label>
+          {emergencyRequired && (
+            <label className="checkbox">
+              <input type="checkbox" checked={emergencyAcknowledged} onChange={(event) => setEmergencyAcknowledged(event.target.checked)} />
+              <span>Je confirme que l’accès d’urgence est nécessaire et accepte sa journalisation.</span>
+            </label>
+          )}
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="submit" disabled={loading}>
+              {loading ? "Vérification…" : emergencyRequired ? "Demander l’accès d’urgence" : "Continuer"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function ConfirmPlatformUserActionDialog({
+  user,
+  action,
+  onClose,
+  onConfirm,
+}: {
+  user: PlatformUser
+  action: "block" | "unblock" | "logout"
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const isLogout = action === "logout"
+  const isBlocking = action === "block"
+
+  async function confirm() {
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "L’action n’a pas pu être effectuée.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="platform-user-confirm-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="action-modal__heading">
+          <div>
+            <span className="eyebrow">Confirmation</span>
+            <h2 id="platform-user-confirm-title">
+              {isLogout ? "Forcer la déconnexion" : isBlocking ? "Bloquer le compte" : "Réactiver le compte"}
+            </h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <div className="detail-modal__content">
+          <p>
+            {isLogout
+              ? `Toutes les sessions de ${user.fullName} seront immédiatement révoquées.`
+              : `Confirmez-vous vouloir ${isBlocking ? "bloquer" : "réactiver"} le compte de ${user.fullName} ?`}
+          </p>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="button" onClick={() => void confirm()} disabled={loading}>
+              {loading ? "Traitement…" : isLogout ? "Déconnecter" : isBlocking ? "Bloquer le compte" : "Réactiver"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function EditTenantDialog({
+  tenant,
+  onClose,
+  onConfirm,
+}: {
+  tenant: PlatformTenant
+  onClose: () => void
+  onConfirm: (name: string) => Promise<void>
+}) {
+  const [name, setName] = useState(tenant.name)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm(name.trim())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "L’entreprise n’a pas pu être modifiée.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="edit-tenant-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="action-modal__heading">
+          <div><span className="eyebrow">Entreprise cliente</span><h2 id="edit-tenant-title">Modifier le nom</h2></div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <form className="detail-modal__content" onSubmit={(event) => void submit(event)}>
+          <label><span>Nom de l’entreprise</span><input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={160} required /></label>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="submit" disabled={loading}>{loading ? "Enregistrement…" : "Enregistrer"}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function EditTeamMemberDialog({
+  member,
+  onClose,
+  onConfirm,
+}: {
+  member: TeamMember
+  onClose: () => void
+  onConfirm: (input: { fullName: string; email: string; phone: string | null }) => Promise<void>
+}) {
+  const [fullName, setFullName] = useState(member.fullName)
+  const [email, setEmail] = useState(member.email)
+  const [phone, setPhone] = useState(member.phone ?? "")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm({ fullName: fullName.trim(), email: email.trim(), phone: phone.trim() || null })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Le profil n’a pas pu être modifié.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="edit-team-member-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="action-modal__heading">
+          <div><span className="eyebrow">Collaborateur</span><h2 id="edit-team-member-title">Modifier le profil</h2></div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <form className="detail-modal__content" onSubmit={(event) => void submit(event)}>
+          <label><span>Nom complet</span><input value={fullName} onChange={(event) => setFullName(event.target.value)} minLength={2} maxLength={120} required /></label>
+          <label><span>Email professionnel</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required /></label>
+          <label><span>Téléphone <small>Facultatif</small></span><input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} /></label>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="submit" disabled={loading}>{loading ? "Enregistrement…" : "Enregistrer"}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function ConfirmActionDialog({
+  title,
+  description,
+  confirmLabel,
+  onClose,
+  onConfirm,
+}: {
+  title: string
+  description: string
+  confirmLabel: string
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  async function confirm() {
+    setLoading(true)
+    setError("")
+    try {
+      await onConfirm()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "L’action n’a pas pu être effectuée.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-action-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="action-modal__heading">
+          <div><span className="eyebrow">Confirmation</span><h2 id="confirm-action-title">{title}</h2></div>
+          <button className="icon-button" type="button" aria-label="Fermer" onClick={onClose}>×</button>
+        </div>
+        <div className="detail-modal__content">
+          <p>{description}</p>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <div className="settings-actions">
+            <button className="outline-button" type="button" onClick={onClose}>Annuler</button>
+            <button className="module-primary" type="button" onClick={() => void confirm()} disabled={loading}>{loading ? "Traitement…" : confirmLabel}</button>
+          </div>
+        </div>
       </section>
     </div>
   )
@@ -1836,6 +2562,12 @@ function ModuleView({
   const [selectedPlatformTenant, setSelectedPlatformTenant] = useState<
     (PlatformTenant & { activeSiteCount: number }) | null
   >(null)
+  const [platformTenantEditTarget, setPlatformTenantEditTarget] = useState<PlatformTenant | null>(null)
+  const [platformTenantStatusTarget, setPlatformTenantStatusTarget] = useState<{
+    tenant: PlatformTenant
+    status: PlatformTenant["status"]
+  } | null>(null)
+  const [subscriptionTerminationTarget, setSubscriptionTerminationTarget] = useState<PlatformTenant | null>(null)
   const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([])
   const [platformUserTotal, setPlatformUserTotal] = useState(0)
   const [platformUserPage, setPlatformUserPage] = useState(1)
@@ -1845,6 +2577,12 @@ function ModuleView({
   >("all")
   const [platformUserRole, setPlatformUserRole] = useState<UserRole | "all">("all")
   const [platformUserTenantId, setPlatformUserTenantId] = useState("all")
+  const [platformUserEditTarget, setPlatformUserEditTarget] = useState<PlatformUser | null>(null)
+  const [platformSupportTarget, setPlatformSupportTarget] = useState<PlatformUser | null>(null)
+  const [platformUserConfirmation, setPlatformUserConfirmation] = useState<{
+    user: PlatformUser
+    action: "block" | "unblock" | "logout"
+  } | null>(null)
   const [supportUserDetail, setSupportUserDetail] = useState<{
     id: string
     fullName: string
@@ -1854,6 +2592,7 @@ function ModuleView({
     active: boolean
     consented: boolean
   } | null>(null)
+  const [temporaryPasswordTarget, setTemporaryPasswordTarget] = useState<PlatformUser | null>(null)
   const [platformAuditLogs, setPlatformAuditLogs] = useState<PlatformAuditLog[]>([])
   const [auditActionFilter, setAuditActionFilter] = useState("")
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequest[]>([])
@@ -1870,6 +2609,8 @@ function ModuleView({
   const [platformSettings, setPlatformSettings] =
     useState<PlatformSettings | null>(null)
   const [updatingMemberIds, setUpdatingMemberIds] = useState<string[]>([])
+  const [teamMemberEditTarget, setTeamMemberEditTarget] = useState<TeamMember | null>(null)
+  const [teamMemberDeleteTarget, setTeamMemberDeleteTarget] = useState<TeamMember | null>(null)
   const [loadingData, setLoadingData] = useState(false)
   const [dataError, setDataError] = useState("")
   useEffect(() => {
@@ -2115,6 +2856,7 @@ function ModuleView({
     planId: string,
     status: NonNullable<PlatformTenant["subscriptionStatus"]>,
     renewsAt: string | null = tenant.renewsAt,
+    throwOnError = false,
   ) {
     try {
       const updated = await api.updateTenantSubscription(tenant.id, {
@@ -2142,6 +2884,11 @@ function ModuleView({
       )
       notify(`Abonnement de ${tenant.name} mis à jour.`)
     } catch (error) {
+      if (throwOnError) {
+        throw error instanceof Error
+          ? error
+          : new Error("L’abonnement n’a pas pu être mis à jour.")
+      }
       notify(
         error instanceof Error
           ? error.message
@@ -2161,8 +2908,37 @@ function ModuleView({
       )
       notify(`Entreprise ${updated.status === "Archivé" ? "archivée" : "mise à jour"}.`)
     } catch (error) {
-      notify(error instanceof Error ? error.message : "L’entreprise n’a pas pu être mise à jour.")
+      throw error instanceof Error
+        ? error
+        : new Error("L’entreprise n’a pas pu être mise à jour.")
     }
+  }
+
+  async function savePlatformTenantName(name: string) {
+    if (!platformTenantEditTarget) return
+    await updatePlatformTenant(platformTenantEditTarget, { name })
+    setPlatformTenantEditTarget(null)
+  }
+
+  async function confirmPlatformTenantStatus() {
+    if (!platformTenantStatusTarget) return
+    await updatePlatformTenant(
+      platformTenantStatusTarget.tenant,
+      { status: platformTenantStatusTarget.status },
+    )
+    setPlatformTenantStatusTarget(null)
+  }
+
+  async function confirmSubscriptionTermination() {
+    if (!subscriptionTerminationTarget) return
+    await updateTenantSubscription(
+      subscriptionTerminationTarget,
+      subscriptionTerminationTarget.planId ?? "",
+      "Résilié",
+      subscriptionTerminationTarget.renewsAt,
+      true,
+    )
+    setSubscriptionTerminationTarget(null)
   }
 
   async function showPlatformTenantDetails(tenant: PlatformTenant) {
@@ -2227,6 +3003,7 @@ function ModuleView({
           monthlyPriceFcfa: Number(plan.monthlyPriceFcfa),
           maxUsers: plan.maxUsers,
           maxSites: plan.maxSites,
+          maxStorageMb: plan.maxStorageMb,
           active,
         },
         plan.id,
@@ -2417,7 +3194,7 @@ function ModuleView({
     }
   }
 
-  async function removeTeamMember(member: TeamMember) {
+  function removeTeamMember(member: TeamMember) {
     if (
       !can("manage_team") ||
       member.role === "ADMIN_ENTERPRISE" ||
@@ -2425,13 +3202,12 @@ function ModuleView({
       updatingMemberIds.includes(member.id)
     )
       return
-    if (
-      !window.confirm(
-        `Supprimer l’accès de ${member.fullName} ? Son historique sera conservé.`,
-      )
-    ) {
-      return
-    }
+    setTeamMemberDeleteTarget(member)
+  }
+
+  async function confirmTeamMemberRemoval() {
+    if (!teamMemberDeleteTarget) return
+    const member = teamMemberDeleteTarget
     setUpdatingMemberIds((current) => [...current, member.id])
     try {
       const updated = await api.deleteTeamMember(member.id)
@@ -2441,12 +3217,11 @@ function ModuleView({
       notify(
         `Accès de ${updated.fullName} supprimé. Son historique est conservé.`,
       )
+      setTeamMemberDeleteTarget(null)
     } catch (error) {
-      notify(
-        error instanceof Error
-          ? error.message
-          : "Le membre n’a pas pu être supprimé.",
-      )
+      throw error instanceof Error
+        ? error
+        : new Error("Le membre n’a pas pu être supprimé.")
     } finally {
       setUpdatingMemberIds((current) =>
         current.filter((id) => id !== member.id),
@@ -2454,94 +3229,116 @@ function ModuleView({
     }
   }
 
-  async function editTeamMemberProfile(member: TeamMember) {
+  function editTeamMemberProfile(member: TeamMember) {
     if (!can("manage_team") || member.role === "ADMIN_ENTERPRISE") return
-    const fullName = window.prompt("Nom complet", member.fullName)
-    if (fullName === null) return
-    const email = window.prompt("Email professionnel", member.email)
-    if (email === null) return
-    const phone = window.prompt("Téléphone professionnel", member.phone ?? "")
-    if (phone === null) return
+    setTeamMemberEditTarget(member)
+  }
+
+  async function saveTeamMemberProfile(input: {
+    fullName: string
+    email: string
+    phone: string | null
+  }) {
+    if (!teamMemberEditTarget) return
     try {
-      await api.updateTeamMemberProfile(member.id, {
-        fullName,
-        email,
-        phone: phone.trim() || null,
-      })
+      await api.updateTeamMemberProfile(teamMemberEditTarget.id, input)
       onDataChange()
-      notify(`Profil de ${fullName} mis à jour.`)
+      notify(`Profil de ${input.fullName} mis à jour.`)
+      setTeamMemberEditTarget(null)
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Le profil n’a pas pu être modifié.")
+      throw error instanceof Error
+        ? error
+        : new Error("Le profil n’a pas pu être modifié.")
     }
   }
 
-  async function togglePlatformUser(userRecord: PlatformUser) {
-    const nextActive = !userRecord.active
-    const action = nextActive ? "réactiver" : "bloquer"
-    if (!window.confirm(`Voulez-vous ${action} le compte de ${userRecord.fullName} ?`)) return
+  function togglePlatformUser(userRecord: PlatformUser) {
+    setPlatformUserConfirmation({
+      user: userRecord,
+      action: userRecord.active ? "block" : "unblock",
+    })
+  }
+
+  async function confirmPlatformUserAction() {
+    if (!platformUserConfirmation) return
+    const { user: userRecord, action } = platformUserConfirmation
     try {
-      await api.setPlatformUserActive(userRecord.id, nextActive)
-      notify(`Compte ${nextActive ? "réactivé" : "bloqué"}.`)
+      if (action === "logout") {
+        await api.revokePlatformUserSessions(userRecord.id)
+        notify("Toutes les sessions du compte ont été révoquées.")
+      } else {
+        const nextActive = action === "unblock"
+        await api.setPlatformUserActive(userRecord.id, nextActive)
+        notify(`Compte ${nextActive ? "réactivé" : "bloqué"}.`)
+      }
+      setPlatformUserConfirmation(null)
       onDataChange()
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Le statut du compte n’a pas pu être modifié.")
+      throw error instanceof Error
+        ? error
+        : new Error("L’action sur le compte n’a pas pu être effectuée.")
     }
   }
 
   async function resetPlatformUserPassword(userRecord: PlatformUser) {
-    if (!window.confirm(`Envoyer un lien de réinitialisation à ${userRecord.emailMasked} ?`)) return
+    setTemporaryPasswordTarget(userRecord)
+  }
+
+  async function saveTemporaryPassword(userRecord: PlatformUser, temporaryPassword: string) {
     try {
-      await api.sendPlatformPasswordReset(userRecord.id)
-      notify("Lien de réinitialisation envoyé à l’adresse du compte.")
+      await api.setPlatformUserTemporaryPassword(userRecord.id, temporaryPassword)
+      notify("Mot de passe provisoire enregistré. Il devra être changé à la prochaine connexion.")
+      setTemporaryPasswordTarget(null)
       onDataChange()
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Le lien de réinitialisation n’a pas pu être envoyé.")
+      throw error instanceof Error
+        ? error
+        : new Error("Le mot de passe provisoire n’a pas pu être enregistré.")
     }
   }
 
-  async function editPlatformUser(userRecord: PlatformUser) {
-    const fullName = window.prompt("Nom complet", userRecord.fullName)
-    if (fullName === null) return
-    const email = window.prompt("Nouvel email (laisser vide pour conserver l’adresse actuelle)", "")
-    if (email === null) return
-    const phone = window.prompt("Nouveau téléphone (laisser vide pour conserver le numéro actuel)", "")
-    if (phone === null) return
-    const input: { fullName?: string; email?: string; phone?: string | null } = { fullName }
-    if (email.trim()) input.email = email.trim()
-    if (phone.trim()) input.phone = phone.trim()
+  function revokePlatformUserSessions(userRecord: PlatformUser) {
+    setPlatformUserConfirmation({ user: userRecord, action: "logout" })
+  }
+
+  function editPlatformUser(userRecord: PlatformUser) {
+    setPlatformUserEditTarget(userRecord)
+  }
+
+  async function savePlatformUserProfile(input: {
+    fullName: string
+    email?: string
+    phone?: string
+  }) {
+    if (!platformUserEditTarget) return
     try {
-      await api.updatePlatformUser(userRecord.id, input)
+      await api.updatePlatformUser(platformUserEditTarget.id, input)
       notify("Compte utilisateur mis à jour.")
+      setPlatformUserEditTarget(null)
       onDataChange()
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Le compte n’a pas pu être modifié.")
+      throw error instanceof Error
+        ? error
+        : new Error("Le compte n’a pas pu être modifié.")
     }
   }
 
-  async function openPlatformSupportAccess(userRecord: PlatformUser) {
-    let justification = window.prompt("Justification obligatoire de l’accès support (12 caractères minimum).")
-    if (!justification?.trim()) return
-    try {
-      const detail = await api.supportUserAccess(userRecord.id, justification.trim(), false)
-      setSupportUserDetail(detail)
-    } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes("consentement")) {
-        const override = window.confirm("Le consentement du compte n’est pas enregistré. Déclencher un accès d’urgence sera journalisé. Continuer ?")
-        if (!override) return
-        justification = window.prompt("Justification d’urgence détaillée (20 caractères minimum).", justification)
-        if (!justification || justification.trim().length < 20) {
-          notify("La justification d’urgence doit contenir au moins 20 caractères.")
-          return
-        }
-        try {
-          setSupportUserDetail(await api.supportUserAccess(userRecord.id, justification.trim(), true))
-        } catch (overrideError) {
-          notify(overrideError instanceof Error ? overrideError.message : "L’accès support a été refusé.")
-        }
-        return
-      }
-      notify(error instanceof Error ? error.message : "L’accès support a été refusé.")
-    }
+  function openPlatformSupportAccess(userRecord: PlatformUser) {
+    setPlatformSupportTarget(userRecord)
+  }
+
+  async function confirmPlatformSupportAccess(
+    justification: string,
+    emergencyOverride: boolean,
+  ) {
+    if (!platformSupportTarget) return
+    const detail = await api.supportUserAccess(
+      platformSupportTarget.id,
+      justification,
+      emergencyOverride,
+    )
+    setSupportUserDetail(detail)
+    setPlatformSupportTarget(null)
   }
 
   if (active === "Chantiers") {
@@ -2837,9 +3634,11 @@ function ModuleView({
         )}
         <SectionHeader
           eyebrow="Opérations"
-          title="Mes tâches"
+          title={can("manage_tasks") ? "Tâches du chantier" : "Mes tâches"}
           description={
-            can("read_assigned")
+            can("manage_tasks")
+              ? "Coordonnez les tâches du chantier affecté, répartissez les responsabilités et suivez les blocages."
+              : can("read_assigned")
               ? "Seules les tâches qui vous sont assignées sont affichées."
               : "Priorisez votre journée et ne laissez aucun blocage ralentir le chantier."
           }
@@ -3303,6 +4102,22 @@ function ModuleView({
     ).length
     return (
       <div className="module-page">
+        {teamMemberEditTarget && (
+          <EditTeamMemberDialog
+            member={teamMemberEditTarget}
+            onClose={() => setTeamMemberEditTarget(null)}
+            onConfirm={saveTeamMemberProfile}
+          />
+        )}
+        {teamMemberDeleteTarget && (
+          <ConfirmActionDialog
+            title="Supprimer l’accès du membre"
+            description={`L’accès de ${teamMemberDeleteTarget.fullName} sera supprimé. Son historique sera conservé.`}
+            confirmLabel="Supprimer l’accès"
+            onClose={() => setTeamMemberDeleteTarget(null)}
+            onConfirm={confirmTeamMemberRemoval}
+          />
+        )}
         {dataError && (
           <div className="auth-error" role="alert">
             {dataError}
@@ -4283,6 +5098,31 @@ function ModuleView({
     )
     return (
       <div className="module-page">
+        {platformTenantEditTarget && (
+          <EditTenantDialog
+            tenant={platformTenantEditTarget}
+            onClose={() => setPlatformTenantEditTarget(null)}
+            onConfirm={savePlatformTenantName}
+          />
+        )}
+        {platformTenantStatusTarget && (
+          <ConfirmActionDialog
+            title={platformTenantStatusTarget.status === "Archivé" ? "Archiver l’entreprise" : "Réactiver l’entreprise"}
+            description={`${platformTenantStatusTarget.status === "Archivé" ? "L’entreprise ne sera plus active dans la plateforme." : "L’entreprise sera réactivée."} ${platformTenantStatusTarget.tenant.name}`}
+            confirmLabel={platformTenantStatusTarget.status === "Archivé" ? "Archiver" : "Réactiver"}
+            onClose={() => setPlatformTenantStatusTarget(null)}
+            onConfirm={confirmPlatformTenantStatus}
+          />
+        )}
+        {subscriptionTerminationTarget && (
+          <ConfirmActionDialog
+            title="Résilier l’abonnement"
+            description={`Résilier l’abonnement de ${subscriptionTerminationTarget.name} bloquera immédiatement l’accès de toute l’entreprise.`}
+            confirmLabel="Résilier l’abonnement"
+            onClose={() => setSubscriptionTerminationTarget(null)}
+            onConfirm={confirmSubscriptionTermination}
+          />
+        )}
         {selectedPlatformTenant && (
           <DetailDialog
             title={selectedPlatformTenant.name}
@@ -4450,7 +5290,7 @@ function ModuleView({
                   <small>Tenant isolé · {tenant.siteCount} chantier(s) · {tenant.status}</small>
                   <small>
                     {tenant.renewsAt
-                      ? `Accès valable jusqu’au ${new Date(`${tenant.renewsAt}T00:00:00`).toLocaleDateString("fr-FR")} inclus`
+                      ? `Accès valable jusqu’au ${formatDateOnly(tenant.renewsAt)} inclus`
                       : "Aucune date de fin définie · accès client bloqué"}
                   </small>
                   <div className="tenant-row-actions">
@@ -4462,22 +5302,15 @@ function ModuleView({
                     <button
                       className="text-button"
                       type="button"
-                      onClick={() => {
-                        const name = window.prompt("Nom de l’entreprise", tenant.name)
-                        if (name?.trim() && name.trim() !== tenant.name) {
-                          void updatePlatformTenant(tenant, { name: name.trim() })
-                        }
-                      }}
+                      onClick={() => setPlatformTenantEditTarget(tenant)}
                     >Modifier</button>
                     <button
                       className="text-button"
                       type="button"
-                      onClick={() => {
-                        const nextStatus = tenant.status === "Archivé" ? "Actif" : "Archivé"
-                        if (window.confirm(`${nextStatus === "Archivé" ? "Archiver" : "Réactiver"} ${tenant.name} ?`)) {
-                          void updatePlatformTenant(tenant, { status: nextStatus })
-                        }
-                      }}
+                      onClick={() => setPlatformTenantStatusTarget({
+                        tenant,
+                        status: tenant.status === "Archivé" ? "Actif" : "Archivé",
+                      })}
                     >{tenant.status === "Archivé" ? "Réactiver" : "Archiver"}</button>
                   </div>
                 </div>
@@ -4520,12 +5353,8 @@ function ModuleView({
                   onChange={(event) => {
                     const nextStatus = event.target
                       .value as NonNullable<PlatformTenant["subscriptionStatus"]>
-                    if (
-                      nextStatus === "Résilié" &&
-                      !window.confirm(
-                        `Résilier l’abonnement de ${tenant.name} maintenant ? L’accès de toute l’entreprise sera bloqué immédiatement.`,
-                      )
-                    ) {
+                    if (nextStatus === "Résilié") {
+                      setSubscriptionTerminationTarget(tenant)
                       return
                     }
                     void updateTenantSubscription(
@@ -4550,7 +5379,7 @@ function ModuleView({
                 <input
                   aria-label={`Fin de validité de ${tenant.name}`}
                   type="date"
-                  value={tenant.renewsAt ?? ""}
+                  value={dateInputValue(tenant.renewsAt)}
                   title="La date indiquée est incluse; les accès sont bloqués à partir du lendemain."
                   onChange={(event) =>
                     void updateTenantSubscription(
@@ -4573,6 +5402,36 @@ function ModuleView({
     const pageCount = Math.max(1, Math.ceil(platformUserTotal / 25))
     return (
       <div className="module-page">
+        {platformUserEditTarget && (
+          <EditPlatformUserDialog
+            user={platformUserEditTarget}
+            onClose={() => setPlatformUserEditTarget(null)}
+            onConfirm={savePlatformUserProfile}
+          />
+        )}
+        {platformSupportTarget && (
+          <PlatformSupportAccessDialog
+            key={platformSupportTarget.id}
+            user={platformSupportTarget}
+            onClose={() => setPlatformSupportTarget(null)}
+            onConfirm={confirmPlatformSupportAccess}
+          />
+        )}
+        {platformUserConfirmation && (
+          <ConfirmPlatformUserActionDialog
+            user={platformUserConfirmation.user}
+            action={platformUserConfirmation.action}
+            onClose={() => setPlatformUserConfirmation(null)}
+            onConfirm={confirmPlatformUserAction}
+          />
+        )}
+        {temporaryPasswordTarget && (
+          <TemporaryPasswordDialog
+            user={temporaryPasswordTarget}
+            onClose={() => setTemporaryPasswordTarget(null)}
+            onConfirm={(password) => saveTemporaryPassword(temporaryPasswordTarget, password)}
+          />
+        )}
         {supportUserDetail && (
           <DetailDialog title="Mode support temporaire" onClose={() => setSupportUserDetail(null)}>
             <p>Accès personnel audité. Fermez cette fenêtre dès que le dépannage est terminé.</p>
@@ -4596,7 +5455,7 @@ function ModuleView({
         />
         <div className="editor-boundary">
           <Icon name="lock" />
-          <div><strong>Accès personnel contrôlé</strong><p>Chaque consultation support est justifiée et inscrite au journal d’audit. Les mots de passe sont réinitialisés par lien email.</p></div>
+          <div><strong>Accès personnel contrôlé</strong><p>Les changements de mot de passe et révocations de session sont journalisés; un mot de passe provisoire impose un changement à la prochaine connexion.</p></div>
         </div>
         <div className="module-toolbar">
           <div className="module-search">
@@ -4644,11 +5503,12 @@ function ModuleView({
               <div><strong>{platformUser.fullName}</strong><small>{platformUser.tenantName} · {platformUser.role}</small></div>
               <span>{platformUser.emailMasked}{platformUser.phoneMasked ? ` · ${platformUser.phoneMasked}` : ""}</span>
               <span>{platformUser.assignedSite ?? "Sans chantier affecté"}</span>
-              <span>{platformUser.active ? "Actif" : "Bloqué"} · consentement {platformUser.sensitiveDataConsented ? "enregistré" : "absent"}</span>
+              <span>{platformUser.active ? "Actif" : "Bloqué"} · {platformUser.mustChangePassword ? "changement de mot de passe requis" : "mot de passe normal"}</span>
               <div className="platform-user-actions">
                 <button className="text-button" type="button" onClick={() => void editPlatformUser(platformUser)}>Modifier</button>
                 <button className="text-button" type="button" onClick={() => void openPlatformSupportAccess(platformUser)}>Mode support</button>
-                <button className="text-button" type="button" disabled={!platformUser.active} onClick={() => void resetPlatformUserPassword(platformUser)}>Réinitialiser le mot de passe</button>
+                <button className="text-button" type="button" disabled={!platformUser.active || platformUser.role === "EDITOR"} onClick={() => void resetPlatformUserPassword(platformUser)}>Mot de passe provisoire</button>
+                {platformUser.role !== "EDITOR" && platformUser.id !== user.id && <button className="text-button" type="button" disabled={!platformUser.active} onClick={() => void revokePlatformUserSessions(platformUser)}>Forcer la déconnexion</button>}
                 {platformUser.role !== "EDITOR" && platformUser.id !== user.id && <button className="text-button" type="button" onClick={() => void togglePlatformUser(platformUser)}>{platformUser.active ? "Bloquer" : "Réactiver"}</button>}
               </div>
             </article>
@@ -4700,9 +5560,12 @@ function ModuleView({
       0,
     )
     const renewals = platformTenants.filter((tenant) => {
-      if (!tenant.renewsAt) return false
+      const renewsAt = dateInputValue(tenant.renewsAt)
+      if (!renewsAt) return false
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
       const days =
-        (new Date(`${tenant.renewsAt}T00:00:00`).getTime() - Date.now()) /
+        (new Date(`${renewsAt}T00:00:00`).getTime() - today.getTime()) /
         86_400_000
       return days >= 0 && days <= 30
     }).length
@@ -4762,6 +5625,10 @@ function ModuleView({
                 <Icon name="building" />
                 {plan.maxSites ?? "Illimité"} chantiers actifs
               </p>
+              <p>
+                <Icon name="cloud" />
+                {plan.maxStorageMb ? `${plan.maxStorageMb} Mo` : "Illimité"} de stockage
+              </p>
               <small>
                 {plan.active ? "Plan actif" : "Plan inactif"} · {plan.subscriberCount ?? 0} abonnement(s)
               </small>
@@ -4777,6 +5644,7 @@ function ModuleView({
                         "Tarif mensuel FCFA": plan.monthlyPriceFcfa,
                         "Limite utilisateurs": String(plan.maxUsers ?? ""),
                         "Limite chantiers": String(plan.maxSites ?? ""),
+                        "Limite stockage (Mo)": String(plan.maxStorageMb ?? ""),
                       },
                     )
                   }
@@ -5358,7 +6226,11 @@ function RecentActivityPanel({ user }: { user: AuthUser }) {
       <div className="panel__heading">
         <div>
           <h3>Activité récente</h3>
-          <p>Vos dernières actions enregistrées</p>
+          <p>
+            {user.role === "ADMIN_ENTERPRISE"
+              ? "Dernières opérations de l’entreprise"
+              : "Vos dernières opérations"}
+          </p>
         </div>
         <span className="count-pill">{activities.length}</span>
       </div>
@@ -5397,6 +6269,67 @@ function RecentActivityPanel({ user }: { user: AuthUser }) {
             </article>
           )
         })}
+      </div>
+    </section>
+  )
+}
+
+function EditorRecentActivityPanel() {
+  const [activities, setActivities] = useState<PlatformAuditLog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let active = true
+    api.platformAuditLogs({ limit: 8 }).then((result) => {
+      if (active) setActivities(result)
+    }).catch((reason: unknown) => {
+      if (active) {
+        setError(reason instanceof Error ? reason.message : "Le journal d’audit n’a pas pu être chargé.")
+      }
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
+  }, [])
+
+  return (
+    <section className="panel recent-activity-panel">
+      <div className="panel__heading">
+        <div>
+          <h3>Activité récente</h3>
+          <p>Dernières opérations inscrites au journal d’audit</p>
+        </div>
+        <span className="count-pill">{activities.length}</span>
+      </div>
+      {loading && <p role="status">Chargement de l’activité…</p>}
+      {error && <div className="auth-error" role="alert">{error}</div>}
+      {!loading && !error && activities.length === 0 && (
+        <p className="recent-activity-empty">Aucune activité récente enregistrée.</p>
+      )}
+      <div className="recent-activity-list">
+        {activities.map((activity) => (
+          <article key={activity.id}>
+            <span className="recent-activity-icon"><Icon name="clipboard" size={16} /></span>
+            <div>
+              <strong>{auditActionLabels[activity.action] ?? activity.action}</strong>
+              <small>
+                {activity.actorName ?? "Compte clôturé"} · {activity.tenantName ?? "Plateforme"} · {
+                  ({ user: "utilisateur", tenant: "entreprise", site: "chantier", subscription: "abonnement" } as Record<string, string>)[activity.targetType] ??
+                  activity.targetType
+                }{activity.targetName ? ` · ${activity.targetName}` : ""}
+              </small>
+            </div>
+            <time dateTime={activity.createdAt}>
+              {new Date(activity.createdAt).toLocaleString("fr-FR", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
+          </article>
+        ))}
       </div>
     </section>
   )
@@ -5618,13 +6551,13 @@ function RestrictedDashboard({
       break
     case "CHEF_CHANTIER":
       eyebrow = "Poste de commandement"
-      description = `Organisez le travail quotidien et rédigez les rapports de ${user.assignedSite ?? "votre chantier affecté"}.`
+      description = `Suivez l’équipe, les blocages et les comptes rendus de ${user.assignedSite ?? "votre chantier affecté"}.`
       metrics = [
         {
           icon: "team",
           label: "Effectif affecté",
           value: String(assignedSite?.teamCount ?? 0),
-          detail: "Membres avec tâches affectées",
+          detail: "Membres actifs sur le chantier",
           tone: "blue",
         },
         {
@@ -5652,21 +6585,21 @@ function RestrictedDashboard({
       break
     case "COMPAGNON":
       eyebrow = "Ma journée"
-      description = "Retrouvez vos tâches assignées et vos outils de terrain."
+      description = `Suivez vos tâches, signalez les blocages et partagez les preuves terrain${user.assignedSite ? ` sur ${user.assignedSite}` : ""}.`
       metrics = [
         {
           icon: "task",
           label: "Mes tâches",
-          value: String(tasks.length),
-          detail: `${openTasks.length} à terminer`,
+          value: String(openTasks.length),
+          detail: `${completedTasks.length} terminée(s)`,
           tone: "blue",
         },
         {
-          icon: "check",
-          label: "Terminées",
-          value: String(completedTasks.length),
-          detail: "Tâches assignées",
-          tone: "green",
+          icon: "alert",
+          label: "Tâches bloquées",
+          value: String(blockedTasks.length),
+          detail: blockedTasks.length > 0 ? "À signaler au chef de chantier" : "Aucun blocage",
+          tone: blockedTasks.length > 0 ? "red" : "green",
         },
         {
           icon: "camera",
@@ -5679,46 +6612,46 @@ function RestrictedDashboard({
         },
         {
           icon: "calendar",
-          label: "Chantier affecté",
-          value: user.assignedSite ? "1" : "0",
-          detail: user.assignedSite ?? "Affectation requise",
+          label: "Prochaine échéance",
+          value: formatDate(nextTask?.dueDate),
+          detail: nextTask?.title ?? "Aucune tâche avec échéance",
           tone: "green",
         },
       ]
       break
     case "SOUS_TRAITANT":
       eyebrow = "Accès externe limité"
-      description = `Votre accès est limité aux tâches confiées sur ${user.assignedSite ?? "votre chantier affecté"}.`
+      description = `Consultez vos missions, signalez les blocages et transmettez vos preuves pour ${user.assignedSite ?? "votre chantier affecté"}.`
       metrics = [
         {
           icon: "task",
-          label: "Tâches assignées",
-          value: String(tasks.length),
-          detail: `${openTasks.length} à terminer`,
+          label: "Missions à réaliser",
+          value: String(openTasks.length),
+          detail: `${tasks.length} tâche(s) confiée(s) au total`,
           tone: "blue",
         },
         {
           icon: "alert",
-          label: "Tâches bloquées",
+          label: "Blocages signalés",
           value: String(blockedTasks.length),
-          detail: "Tâches qui nécessitent une action",
-          tone: "red",
+          detail: blockedTasks.length > 0 ? "À signaler au responsable du chantier" : "Aucun blocage",
+          tone: blockedTasks.length > 0 ? "red" : "green",
         },
         {
           icon: "camera",
-          label: "Preuves déposées",
+          label: "Mes preuves",
           value: String(
             photos.filter((photo) => photo.authorId === user.id).length,
           ),
-          detail: "Photos de votre chantier",
+          detail: "Photos transmises",
           tone: "orange",
         },
         {
           icon: "calendar",
           label: "Prochaine échéance",
           value: formatDate(nextTask?.dueDate),
-          detail: nextTask?.title ?? "Aucune tâche avec échéance",
-          tone: "green",
+          detail: nextTask?.title ?? "Aucune mission avec échéance",
+          tone: "blue",
         },
       ]
       break
@@ -5856,7 +6789,76 @@ function RestrictedDashboard({
             value={value}
             detail={detail}
             tone={tone}
-          />
+            onClick={(() => {
+              if (
+                ![
+                  "EDITOR",
+                  "ADMIN_ENTERPRISE",
+                  "CONDUCTEUR",
+                  "CHEF_CHANTIER",
+                  "COMPAGNON",
+                  "SOUS_TRAITANT",
+                  "COMPTABLE",
+                ].includes(user.role)
+              ) {
+                return undefined
+              }
+              return () => {
+                const editorDestinations: Record<string, string> = {
+                  "Entreprises actives": "Entreprises",
+                  "Revenu mensuel": "Abonnements",
+                  "Tickets ouverts": "Support",
+                  "Utilisateurs actifs": "Utilisateurs",
+                }
+                const enterpriseDestinations: Record<string, string> = {
+                  "Chantiers actifs": "Chantiers",
+                  "Tâches à traiter": "Mes tâches",
+                  "Rapports à valider": "Rapports",
+                  "Trésorerie nette": "Trésorerie",
+                }
+                const conductorDestinations: Record<string, string> = {
+                  "Chantier affecté": "Chantiers",
+                  "Tâches à suivre": "Mes tâches",
+                  "Rapports à valider": "Rapports",
+                  "Équipe du chantier": "Équipe",
+                }
+                const foremanDestinations: Record<string, string> = {
+                  "Effectif affecté": "Équipe",
+                  "Tâches à traiter": "Mes tâches",
+                  "Photos du chantier": "Photos",
+                  "Rapports en attente": "Rapports",
+                }
+                const companionDestinations: Record<string, string> = {
+                  "Mes tâches": "Mes tâches",
+                  "Tâches bloquées": "Mes tâches",
+                  "Missions à réaliser": "Mes tâches",
+                  "Blocages signalés": "Mes tâches",
+                  "Mes photos": "Photos",
+                  "Mes preuves": "Photos",
+                  "Prochaine échéance": "Mes tâches",
+                }
+                const accountantDestinations: Record<string, string> = {
+                  "À encaisser": "Trésorerie",
+                  "Déjà encaissé": "Trésorerie",
+                  "Dépenses réalisées": "Trésorerie",
+                  "Rapports validés": "Rapports",
+                }
+                const destination =
+                  user.role === "EDITOR"
+                    ? editorDestinations[label]
+                    : user.role === "ADMIN_ENTERPRISE"
+                      ? enterpriseDestinations[label]
+                      : user.role === "CONDUCTEUR"
+                        ? conductorDestinations[label]
+                        : user.role === "CHEF_CHANTIER"
+                          ? foremanDestinations[label]
+                          : user.role === "COMPTABLE"
+                            ? accountantDestinations[label]
+                            : companionDestinations[label]
+                if (destination) onNavigate(destination)
+              }
+          })()}
+        />
         ))}
       </section>
       {loading && (
@@ -5868,12 +6870,36 @@ function RestrictedDashboard({
         </div>
       )}
       <section className="role-actions" aria-label="Accès rapides autorisés">
-        {user.sections
-          .filter(
-            (section) =>
-              !["Tableau de bord", "Profil", "Paramètres"].includes(section),
-          )
-          .slice(0, 4)
+        {(user.role === "ADMIN_ENTERPRISE"
+          ? ["Chantiers", "Équipe", "Dossiers de paiement", "Paramètres"].filter(
+              (section) => user.sections.includes(section),
+            )
+          : user.role === "CONDUCTEUR"
+            ? ["Mes tâches", "Rapports", "Équipe", "Photos"].filter(
+                (section) => user.sections.includes(section),
+              )
+            : user.role === "CHEF_CHANTIER"
+              ? ["Mes tâches", "Rapports", "Pointage", "Photos"].filter(
+                  (section) => user.sections.includes(section),
+                )
+                : user.role === "COMPAGNON"
+                  ? ["Mes tâches", "Pointage", "Photos"].filter(
+                      (section) => user.sections.includes(section),
+                    )
+                  : user.role === "SOUS_TRAITANT"
+                    ? ["Mes tâches", "Photos"].filter(
+                        (section) => user.sections.includes(section),
+                      )
+                      : user.role === "COMPTABLE"
+                        ? ["Dossiers de paiement", "Trésorerie", "Rapports"].filter(
+                            (section) => user.sections.includes(section),
+                          )
+            : user.sections
+              .filter(
+                (section) =>
+                  !["Tableau de bord", "Profil", "Paramètres"].includes(section),
+              )
+              .slice(0, 4))
           .map((section) => (
             <button key={section} onClick={() => onNavigate(section)}>
               <span>
@@ -5897,7 +6923,7 @@ function RestrictedDashboard({
                 {user.role === "EDITOR"
                   ? "Pilotage de la plateforme"
                   : user.role === "COMPTABLE"
-                    ? "Dossiers prioritaires"
+                    ? "Périmètre comptable"
                     : "Votre périmètre"}
               </h3>
               <p>Informations autorisées pour votre rôle</p>
@@ -5946,6 +6972,8 @@ function RestrictedDashboard({
         </section>
         {user.tenantId ? (
           <RecentActivityPanel user={user} />
+        ) : user.role === "EDITOR" ? (
+          <EditorRecentActivityPanel />
         ) : (
         <section className="panel">
           <div className="panel__heading">
@@ -6115,6 +7143,10 @@ function Dashboard({
       await api.createTask({
         siteId: values.siteId ?? "",
         title: values.Tâche ?? "",
+        description: values.Description ?? "",
+        category: values.Catégorie?.trim() || "Général",
+        priority: (values.priority ?? "Normale") as Task["priority"],
+        assignedTo: values.assignedTo || null,
         dueDate: values.Échéance || null,
       })
       setDataRevision((revision) => revision + 1)
@@ -6227,12 +7259,17 @@ function Dashboard({
       const maxSites = values["Limite chantiers"]
         ? Number(values["Limite chantiers"])
         : null
+      const maxStorageMb = values["Limite stockage (Mo)"]
+        ? Number(values["Limite stockage (Mo)"])
+        : null
       if (
         !Number.isSafeInteger(monthlyPriceFcfa) ||
         monthlyPriceFcfa < 0 ||
         (maxUsers !== null &&
           (!Number.isSafeInteger(maxUsers) || maxUsers < 1)) ||
-        (maxSites !== null && (!Number.isSafeInteger(maxSites) || maxSites < 1))
+        (maxSites !== null && (!Number.isSafeInteger(maxSites) || maxSites < 1)) ||
+        (maxStorageMb !== null &&
+          (!Number.isSafeInteger(maxStorageMb) || maxStorageMb < 1))
       ) {
         throw new Error("Vérifiez le tarif et les limites du plan.")
       }
@@ -6242,6 +7279,7 @@ function Dashboard({
           monthlyPriceFcfa,
           maxUsers,
           maxSites,
+          maxStorageMb,
         },
         action.id,
       )
@@ -6305,7 +7343,17 @@ function Dashboard({
   }
 
   return (
-    <div className={`app-shell ${dark ? "dark" : ""}`}>
+    <div
+      className={`app-shell ${dark ? "dark" : ""} ${
+        user.role === "EDITOR"
+          ? "app-shell--editor"
+          : `app-shell--workspace ${
+              user.role === "ADMIN_ENTERPRISE"
+                ? "app-shell--enterprise-admin"
+                : ""
+            }`
+      }`}
+    >
       <ActionDialog
         action={pendingAction}
         user={user}

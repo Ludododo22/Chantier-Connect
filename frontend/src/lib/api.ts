@@ -31,6 +31,8 @@ export interface AuthUser {
 
   sensitiveDataConsented: boolean
 
+  mustChangePassword: boolean
+
   sections: string[]
 
   capabilities: Capability[]
@@ -285,6 +287,7 @@ export interface PlatformUser {
   tenantName: string
   assignedSiteId: string | null
   assignedSite: string | null
+  mustChangePassword: boolean
   requiresUserConsent: boolean
   sensitiveDataConsented: boolean
   createdAt: string
@@ -299,6 +302,7 @@ export interface PlatformAuditLog {
   tenantName: string | null
   targetType: string
   targetId: string
+  targetName: string | null
   action: string
   payloadMasked: Record<string, unknown>
   ip: string | null
@@ -338,6 +342,8 @@ export interface SubscriptionPlan {
   maxUsers: number | null
 
   maxSites: number | null
+
+  maxStorageMb: number | null
 
   active: boolean
 
@@ -630,6 +636,13 @@ export const api = {
     })
   },
 
+  async completeFirstPasswordChange(newPassword: string) {
+    await request<void>("/api/auth/first-password", {
+      method: "POST",
+      body: JSON.stringify({ newPassword }),
+    })
+  },
+
   async savePrivacyConsent(accepted: boolean) {
     const result = await request<{ data: { sensitiveDataConsented: boolean } }>(
       "/api/auth/privacy-consent",
@@ -748,6 +761,14 @@ export const api = {
     siteId: string
 
     title: string
+
+    description?: string
+
+    category?: string
+
+    priority?: Task["priority"]
+
+    assignedTo?: string | null
 
     dueDate: string | null
   }) {
@@ -1084,6 +1105,19 @@ export const api = {
     return result.data
   },
 
+  async revokePlatformUserSessions(id: string) {
+    await request<void>(`/api/platform/users/${encodeURIComponent(id)}/sessions/revoke`, {
+      method: "POST",
+    })
+  },
+
+  async setPlatformUserTemporaryPassword(id: string, temporaryPassword: string) {
+    await request<void>(`/api/platform/users/${encodeURIComponent(id)}/temporary-password`, {
+      method: "POST",
+      body: JSON.stringify({ temporaryPassword }),
+    })
+  },
+
   async sendPlatformPasswordReset(id: string) {
     return request<{ message: string }>(`/api/platform/users/${encodeURIComponent(id)}/password-reset`, { method: "POST" })
   },
@@ -1279,6 +1313,8 @@ export const api = {
       maxUsers: number | null
 
       maxSites: number | null
+
+      maxStorageMb: number | null
 
       active?: boolean
     },

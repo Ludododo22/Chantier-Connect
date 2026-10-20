@@ -93,8 +93,9 @@ des boutons dans l’interface.
 
 1. **Administrateur** crée les chantiers et les membres, puis affecte chaque
    équipe.
-2. **Administrateur ou Conducteur** crée des tâches, choisit un responsable et
-   fixe une échéance.
+2. **Administrateur ou Conducteur** crée des tâches, choisit le chantier et, si
+   besoin, un responsable actif du même périmètre; il précise la priorité, la
+   catégorie, les consignes et l’échéance.
 3. **Compagnon/Sous-traitant** met à jour ses propres tâches et dépose les preuves
    terrain autorisées.
 4. **Chef de chantier** suit les blocages, le pointage et prépare le rapport

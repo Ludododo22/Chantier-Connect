@@ -44,6 +44,7 @@ export interface AuthUser {
   sessionVersion: number
   requiresUserConsent: boolean
   sensitiveDataConsented: boolean
+  mustChangePassword: boolean
   sections: string[]
   capabilities: Capability[]
   profilePhotoUrl: string | null

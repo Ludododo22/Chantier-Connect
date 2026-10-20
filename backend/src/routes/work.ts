@@ -13,6 +13,7 @@ import { authenticate, requireAnyCapability, requireTenant } from "../auth.js"
 import { pool } from "../db.js"
 
 import { writeAuditLog } from "../audit-log.js"
+import { tenantStorageCapacity } from "../storage.js"
 
 import { roleAccess, siteScopedRoles } from "../role-access.js"
 
@@ -39,43 +40,47 @@ router.get(
       s.name AS site_name, t.created_at AS occurred_at
     FROM tasks t
     JOIN sites s ON s.id = t.site_id AND s.tenant_id = t.tenant_id
-    WHERE t.tenant_id = $1 AND t.created_by = $2
+    WHERE t.tenant_id = $1 AND ($3::boolean OR t.created_by = $2)
     UNION ALL
     SELECT 'Rapport', 'Rapport journalier', r.status,
       s.name, r.created_at
     FROM reports r
     JOIN sites s ON s.id = r.site_id AND s.tenant_id = r.tenant_id
-    WHERE r.tenant_id = $1 AND r.author_id = $2
+    WHERE r.tenant_id = $1 AND ($3::boolean OR r.author_id = $2)
     UNION ALL
     SELECT 'Photo', p.caption, 'Photo ajoutée',
       s.name, p.created_at
     FROM photos p
     JOIN sites s ON s.id = p.site_id AND s.tenant_id = p.tenant_id
-    WHERE p.tenant_id = $1 AND p.author_id = $2
+    WHERE p.tenant_id = $1 AND ($3::boolean OR p.author_id = $2)
     UNION ALL
     SELECT 'Pointage', 'Pointage chantier',
       CASE WHEN a.clock_out_at IS NULL THEN 'Entrée enregistrée' ELSE 'Journée clôturée' END,
       s.name, a.clock_in_at
     FROM attendance_records a
     JOIN sites s ON s.id = a.site_id AND s.tenant_id = a.tenant_id
-    WHERE a.tenant_id = $1 AND a.user_id = $2
+    WHERE a.tenant_id = $1 AND ($3::boolean OR a.user_id = $2)
     UNION ALL
     SELECT 'Finance', f.description,
       CASE f.entry_type WHEN 'encaissement' THEN 'Encaissement' WHEN 'depense' THEN 'Dépense' ELSE 'Engagement' END,
       s.name, f.created_at
     FROM finance_entries f
     JOIN sites s ON s.id = f.site_id AND s.tenant_id = f.tenant_id
-    WHERE f.tenant_id = $1 AND f.created_by = $2
+    WHERE f.tenant_id = $1 AND ($3::boolean OR f.created_by = $2)
     UNION ALL
     SELECT 'Dossier de paiement', d.subject, d.status,
       s.name, d.created_at
     FROM payment_dossiers d
     JOIN sites s ON s.id = d.site_id AND s.tenant_id = d.tenant_id
-    WHERE d.tenant_id = $1 AND d.created_by = $2
+    WHERE d.tenant_id = $1 AND ($3::boolean OR d.created_by = $2)
   ) activity
   ORDER BY activity.occurred_at DESC
   LIMIT 8`,
-      [tenantId, userRequest.authUser.id],
+      [
+        tenantId,
+        userRequest.authUser.id,
+        userRequest.authUser.role === "ADMIN_ENTERPRISE",
+      ],
     )
 
     response.json({ data: result.rows })
@@ -493,11 +498,12 @@ router.post(
       }
       const result = await client.query(
         `INSERT INTO users (
-           tenant_id, email, phone, password_hash, full_name, initials,
+           tenant_id, email, phone, password_hash, must_change_password,
+           full_name, initials,
            role, role_label, tenant_name, tenant_plan, assigned_site, assigned_site_id,
            sections, capabilities
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id, email, phone, full_name AS "fullName", initials,
                    role, role_label AS "roleLabel", assigned_site AS "assignedSite",
                    assigned_site_id AS "assignedSiteId",
@@ -1634,46 +1640,51 @@ router.post(
 
     const checksum = createHash("sha256").update(imageData).digest("hex")
 
-    const result = await pool.query(
-      `INSERT INTO photos (
-         tenant_id, site_id, author_id, caption, content_type,
-         image_data, sha256, latitude, longitude, captured_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, now()))
-       RETURNING id, site_id AS "siteId", $11::text AS "siteName",
-                 author_id AS "authorId", $12::text AS "authorName",
-                 caption, content_type AS "contentType", sha256,
-                 latitude, longitude, captured_at AS "capturedAt",
-                 created_at AS "createdAt"`,
-
-      [
-        tenantId,
-
-        photo.siteId,
-
-        userRequest.authUser.id,
-
-        photo.caption,
-
-        photo.contentType,
-
-        imageData,
-
-        checksum,
-
-        latitude,
-
-        longitude,
-
-        photo.capturedAt ?? null,
-
-        site.rows[0].name,
-
-        userRequest.authUser.fullName,
-      ],
-    )
-
-    response.status(201).json({ data: result.rows[0] })
+    const client = await pool.connect()
+    try {
+      await client.query("BEGIN")
+      const capacity = await tenantStorageCapacity(client, tenantId, imageData.length)
+      if (!capacity.allowed) {
+        await client.query("ROLLBACK")
+        response.status(409).json({
+          error: `La limite de stockage du plan (${capacity.maxStorageMb} Mo) est atteinte.`,
+        })
+        return
+      }
+      const result = await client.query(
+        `INSERT INTO photos (
+           tenant_id, site_id, author_id, caption, content_type,
+           image_data, sha256, latitude, longitude, captured_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, now()))
+         RETURNING id, site_id AS "siteId", $11::text AS "siteName",
+                   author_id AS "authorId", $12::text AS "authorName",
+                   caption, content_type AS "contentType", sha256,
+                   latitude, longitude, captured_at AS "capturedAt",
+                   created_at AS "createdAt"`,
+        [
+          tenantId,
+          photo.siteId,
+          userRequest.authUser.id,
+          photo.caption,
+          photo.contentType,
+          imageData,
+          checksum,
+          latitude,
+          longitude,
+          photo.capturedAt ?? null,
+          site.rows[0].name,
+          userRequest.authUser.fullName,
+        ],
+      )
+      await client.query("COMMIT")
+      response.status(201).json({ data: result.rows[0] })
+    } catch (error) {
+      await client.query("ROLLBACK")
+      throw error
+    } finally {
+      client.release()
+    }
   },
 )
 

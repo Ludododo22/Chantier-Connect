@@ -41,10 +41,13 @@ router.get("/audit-logs", async (request, response) => {
             log.actor_role AS "actorRole", log.tenant_id AS "tenantId",
             tenant.name AS "tenantName", log.target_type AS "targetType",
             log.target_id AS "targetId", log.action, log.payload_masked AS "payloadMasked",
+            target_user.full_name AS "targetName",
             log.ip, log.user_agent AS "userAgent", log.created_at AS "createdAt"
      FROM audit_logs log
      LEFT JOIN users actor ON actor.id = log.actor_id
      LEFT JOIN tenants tenant ON tenant.id = log.tenant_id
+     LEFT JOIN users target_user
+       ON log.target_type = 'user' AND target_user.id::text = log.target_id
      WHERE ($1::text IS NULL OR log.action = $1)
        AND ($2::uuid IS NULL OR log.tenant_id = $2)
      ORDER BY log.created_at DESC
@@ -78,6 +81,8 @@ const planSchema = z.object({
   maxUsers: z.number().int().positive().nullable(),
 
   maxSites: z.number().int().positive().nullable(),
+
+  maxStorageMb: z.number().int().positive().nullable(),
 
   active: z.boolean().optional(),
 })
@@ -519,10 +524,11 @@ router.post("/tenants", async (request, response) => {
 
     await client.query(
       `INSERT INTO users (
-         tenant_id, email, phone, password_hash, full_name, initials, role,
+         tenant_id, email, phone, password_hash, must_change_password,
+         full_name, initials, role,
          role_label, tenant_name, tenant_plan, sections, capabilities
        )
-       VALUES ($1, $2, $3, $4, $5, $6, 'ADMIN_ENTERPRISE', $7, $8, $9, $10, $11)`,
+       VALUES ($1, $2, $3, $4, true, $5, $6, 'ADMIN_ENTERPRISE', $7, $8, $9, $10, $11)`,
 
       [
         tenant.id,
@@ -713,6 +719,7 @@ router.get("/plans", async (_request, response) => {
   const result = await pool.query(
     `SELECT p.id, p.name, p.monthly_price_fcfa AS "monthlyPriceFcfa",
             p.max_users AS "maxUsers", p.max_sites AS "maxSites",
+            p.max_storage_mb AS "maxStorageMb",
             p.active, count(s.tenant_id)::int AS "subscriberCount"
      FROM subscription_plans p
      LEFT JOIN tenant_subscriptions s ON s.plan_id = p.id AND s.status != 'Résilié'
@@ -739,16 +746,18 @@ router.post("/plans", async (request, response) => {
     const plan = parsed.data
 
     const result = await pool.query(
-      `INSERT INTO subscription_plans (name, monthly_price_fcfa, max_users, max_sites, active)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO subscription_plans (name, monthly_price_fcfa, max_users, max_sites, max_storage_mb, active)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, monthly_price_fcfa AS "monthlyPriceFcfa",
-                 max_users AS "maxUsers", max_sites AS "maxSites", active`,
+                 max_users AS "maxUsers", max_sites AS "maxSites",
+                 max_storage_mb AS "maxStorageMb", active`,
 
       [
         plan.name,
         plan.monthlyPriceFcfa,
         plan.maxUsers,
         plan.maxSites,
+        plan.maxStorageMb,
         plan.active ?? true,
       ],
     )
@@ -795,10 +804,12 @@ router.patch("/plans/:id", async (request, response) => {
            monthly_price_fcfa = CASE WHEN $4::boolean THEN $5 ELSE monthly_price_fcfa END,
            max_users = CASE WHEN $6::boolean THEN $7::integer ELSE max_users END,
            max_sites = CASE WHEN $8::boolean THEN $9::integer ELSE max_sites END,
-           active = CASE WHEN $10::boolean THEN $11 ELSE active END
+           active = CASE WHEN $10::boolean THEN $11 ELSE active END,
+           max_storage_mb = CASE WHEN $12::boolean THEN $13::integer ELSE max_storage_mb END
        WHERE id = $1
        RETURNING id, name, monthly_price_fcfa AS "monthlyPriceFcfa",
-                 max_users AS "maxUsers", max_sites AS "maxSites", active`,
+                 max_users AS "maxUsers", max_sites AS "maxSites",
+                 max_storage_mb AS "maxStorageMb", active`,
 
       [
         id.data,
@@ -812,6 +823,8 @@ router.patch("/plans/:id", async (request, response) => {
         plan.maxSites ?? null,
         plan.active !== undefined,
         plan.active ?? null,
+        plan.maxStorageMb !== undefined,
+        plan.maxStorageMb ?? null,
       ],
     )
 

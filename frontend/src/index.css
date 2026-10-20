@@ -114,6 +114,9 @@ button { cursor: pointer; }
 .sync-banner button { border: 0; background: transparent; color: var(--green); font-size: 9px; font-weight: 700; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 25px 0 18px; }
 .metric-card { display: flex; align-items: center; gap: 13px; min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.metric-card--interactive { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.metric-card--interactive:hover { border-color: #b8cdbc; box-shadow: 0 5px 16px #183c2512; transform: translateY(-1px); }
+.metric-card--interactive:focus-visible { outline: 3px solid #2c7651; outline-offset: 2px; }
 .metric-card__icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; }
 .metric-card__icon--orange { color: #a85d20; background: #fff0df; }
 .metric-card__icon--blue { color: #315f9a; background: #e9f1fb; }
@@ -230,6 +233,17 @@ button { cursor: pointer; }
 .task-row[role="button"]:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .detail-modal { width: min(100%, 560px); max-height: calc(100vh - 40px); overflow-y: auto; padding: 24px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 24px 70px rgba(9,28,17,.24); }
 .detail-modal__content { padding-top: 12px; }
+.detail-modal__content > p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.detail-modal__content > label:not(.checkbox) { display: grid; gap: 7px; margin-top: 14px; }
+.detail-modal__content > label > span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.detail-modal__content > label > span small { font-weight: 500; }
+.detail-modal__content input:not([type="checkbox"]),
+.detail-modal__content textarea { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--canvas); font: inherit; font-size: 13px; }
+.detail-modal__content textarea { min-height: 110px; resize: vertical; }
+.detail-modal__content input:focus,
+.detail-modal__content textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(29,92,58,.09); }
+.detail-modal__content .checkbox { align-items: flex-start; margin-top: 12px; font-size: 12px; line-height: 1.45; }
+.detail-modal__content .checkbox input { flex: 0 0 auto; margin-top: 3px; }
 .detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .detail-list > div { min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); }
 .detail-list dt { margin-bottom: 5px; color: var(--muted); font-size: 9px; font-weight: 700; }
@@ -931,4 +945,431 @@ html:has(.landing-page) {
   .registration-request { grid-template-columns: 1fr; gap: 9px; }
   .registration-request__actions { justify-content: stretch; flex-wrap: wrap; }
   .registration-request__actions select, .registration-request__actions .secondary-button { flex: 1; }
+}
+
+.app-shell--editor .dashboard { max-width: 1600px; }
+.app-shell--editor .sidebar__nav button,
+.app-shell--editor .sidebar__footer > button { font-size: 13px; }
+.app-shell--editor .nav-label { font-size: 10px; }
+.app-shell--editor .tenant strong,
+.app-shell--editor .profile-mini strong { font-size: 12px; }
+.app-shell--editor .tenant small,
+.app-shell--editor .profile-mini small { font-size: 10px; }
+.app-shell--editor .topbar__title h2 { font-size: 20px; }
+.app-shell--editor .topbar__title p,
+.app-shell--editor .connection { font-size: 12px; }
+.app-shell--editor .welcome h1 { font-size: 32px; }
+.app-shell--editor .welcome p,
+.app-shell--editor .panel__heading p,
+.app-shell--editor .quick-actions > div > p { font-size: 13px; line-height: 1.55; }
+.app-shell--editor .metric-card div > span { font-size: 12px; }
+.app-shell--editor .metric-card small { font-size: 11px; line-height: 1.4; }
+.app-shell--editor .panel__heading h3,
+.app-shell--editor .quick-actions h3 { font-size: 16px; }
+.app-shell--editor .role-actions button { min-width: 0; }
+.app-shell--editor .role-actions button > strong { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell--editor .role-actions button > small { font-size: 10px; }
+.app-shell--editor .scope-card strong { font-size: 13px; overflow-wrap: anywhere; }
+.app-shell--editor .scope-card p { font-size: 11px; line-height: 1.5; }
+.app-shell--editor .scope-list strong { font-size: 11px; }
+.app-shell--editor .scope-list small { font-size: 10px; }
+.app-shell--editor .action-list strong { font-size: 13px; }
+.app-shell--editor .action-list small { font-size: 11px; }
+.app-shell--editor .recent-activity-list strong { font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--editor .recent-activity-list small { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--editor .recent-activity-list time { font-size: 10px; white-space: normal; text-align: right; }
+.app-shell--editor .recent-activity-empty { font-size: 12px; }
+.app-shell--editor .module-header h1 { font-size: 30px; }
+.app-shell--editor .module-header p { max-width: 780px; font-size: 14px; line-height: 1.6; }
+.app-shell--editor .module-primary,
+.app-shell--editor .secondary-button,
+.app-shell--editor .module-toolbar select,
+.app-shell--editor .module-search input { font-size: 13px; }
+.app-shell--editor .editor-boundary { align-items: flex-start; padding: 16px 18px; }
+.app-shell--editor .editor-boundary strong { font-size: 14px; }
+.app-shell--editor .editor-boundary p { font-size: 12px; line-height: 1.55; }
+.app-shell--editor .registration-request-panel { padding: 24px; }
+.app-shell--editor .registration-request-panel__heading h2 { font-size: 22px; }
+.app-shell--editor .registration-request-panel__heading p { font-size: 14px; }
+.app-shell--editor .registration-request__identity strong { font-size: 15px; }
+.app-shell--editor .registration-request__identity span,
+.app-shell--editor .registration-request > small,
+.app-shell--editor .registration-request > p { font-size: 12px; line-height: 1.5; }
+.app-shell--editor .registration-request__actions select,
+.app-shell--editor .registration-request__actions .secondary-button { font-size: 12px; }
+.app-shell--editor .editor-metrics span { font-size: 12px; }
+.app-shell--editor .editor-metrics small { font-size: 11px; line-height: 1.4; }
+.app-shell--editor .tenant-list { overflow-x: auto; }
+.app-shell--editor .tenant-list .table-head,
+.app-shell--editor .tenant-list .table-row {
+  grid-template-columns: minmax(250px, 1.55fr) minmax(140px, .8fr) minmax(135px, .75fr) minmax(145px, .8fr) minmax(175px, .9fr);
+  gap: 14px;
+  min-width: 1040px;
+}
+.app-shell--editor .tenant-list .table-head { min-height: 46px; font-size: 11px; }
+.app-shell--editor .tenant-list .table-row { min-height: 112px; padding-top: 12px; padding-bottom: 12px; font-size: 12px; }
+.app-shell--editor .tenant-list .table-row > div { min-width: 0; gap: 6px; }
+.app-shell--editor .tenant-list .table-row strong { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--editor .tenant-list .table-row small { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell--editor .tenant-list .table-row > span { font-size: 12px; line-height: 1.4; }
+.app-shell--editor .tenant-list select,
+.app-shell--editor .tenant-list input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 9px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
+}
+.app-shell--editor .tenant-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-shell--editor .tenant-row-actions .text-button,
+.app-shell--editor .platform-user-actions .text-button { font-size: 12px; }
+.app-shell--editor .dossier-list { overflow-x: auto; }
+.app-shell--editor .dossier-list > article {
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(160px, 1fr) minmax(300px, 1.6fr);
+  gap: 14px;
+  min-width: 1050px;
+  min-height: 76px;
+  font-size: 12px;
+}
+.app-shell--editor .dossier-list > article strong { font-size: 13px; overflow-wrap: anywhere; }
+.app-shell--editor .dossier-list > article small { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell--editor .dossier-list > article > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
+.app-shell--editor .platform-user-actions { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.app-shell--editor .plan-grid__heading h2 { font-size: 16px; }
+.app-shell--editor .plan-grid__heading .text-button { font-size: 12px; }
+.app-shell--editor .plan-card > span { font-size: 10px; }
+.app-shell--editor .plan-card h3 { font-size: 17px; }
+.app-shell--editor .plan-card p { font-size: 12px; line-height: 1.45; }
+.app-shell--editor .plan-card > strong small { font-size: 11px; }
+.app-shell--editor .plan-card button { font-size: 12px; }
+.app-shell--editor .billing-summary span { font-size: 11px; }
+.app-shell--editor .billing-summary strong { font-size: 15px; }
+.app-shell--editor .billing-summary small { font-size: 10px; }
+.app-shell--editor .invoice-register__heading h2 { font-size: 16px; }
+.app-shell--editor .invoice-register__heading p { font-size: 12px; }
+.app-shell--editor .invoice-register__head { font-size: 10px; }
+.app-shell--editor .invoice-register__row { font-size: 12px; }
+.app-shell--editor .invoice-register__row > div:first-child strong { font-size: 13px; }
+.app-shell--editor .invoice-register__row small { font-size: 11px; }
+.app-shell--editor .invoice-status { font-size: 11px; }
+
+@media (max-width: 1100px) {
+  .app-shell--editor .registration-request { grid-template-columns: 1fr 1fr; }
+  .app-shell--editor .registration-request__actions { flex-wrap: wrap; justify-content: flex-start; }
+}
+
+@media (max-width: 720px) {
+  .app-shell--editor .welcome h1 { font-size: 26px; }
+  .app-shell--editor .module-header h1 { font-size: 25px; }
+  .app-shell--editor .module-header p { font-size: 13px; }
+  .app-shell--editor .registration-request-panel { padding: 16px; }
+  .app-shell--editor .registration-request { grid-template-columns: 1fr; }
+  .app-shell--editor .registration-request__actions { align-items: stretch; }
+  .app-shell--editor .registration-request__actions select,
+  .app-shell--editor .registration-request__actions .secondary-button { flex: 1; }
+  .app-shell--editor .dossier-list > article {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 9px;
+    padding: 14px 0;
+  }
+  .app-shell--editor .platform-user-actions { grid-column: 1; }
+  .app-shell--editor .tenant-list .table-head { display: none; }
+  .app-shell--editor .tenant-list .table-row {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 10px;
+    padding: 14px;
+  }
+  .app-shell--editor .tenant-list .table-row > * { grid-column: 1; }
+  .app-shell--editor .tenant-row-actions { gap: 8px; }
+  .app-shell--editor .plan-card { min-height: 200px; }
+}
+
+.app-shell--workspace .sidebar__nav button,
+.app-shell--workspace .sidebar__footer > button { font-size: 13px; }
+.app-shell--workspace .nav-label { font-size: 10px; }
+.app-shell--workspace .tenant strong,
+.app-shell--workspace .profile-mini strong { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell--workspace .tenant small,
+.app-shell--workspace .profile-mini small { font-size: 10px; }
+.app-shell--workspace .topbar__title h2 { font-size: 20px; }
+.app-shell--workspace .topbar__title p,
+.app-shell--workspace .connection { font-size: 12px; }
+.app-shell--workspace .dashboard { max-width: 1600px; }
+.app-shell--workspace .welcome h1 { font-size: 30px; }
+.app-shell--workspace .welcome p,
+.app-shell--workspace .panel__heading p,
+.app-shell--workspace .quick-actions > div > p { font-size: 13px; line-height: 1.55; }
+.app-shell--workspace .metric-card div > span { font-size: 12px; line-height: 1.4; }
+.app-shell--workspace .metric-card small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .metric-card strong { overflow-wrap: anywhere; }
+.app-shell--workspace .panel__heading h3,
+.app-shell--workspace .quick-actions h3 { font-size: 16px; }
+.app-shell--workspace .role-actions button { min-width: 0; }
+.app-shell--workspace .role-actions button > strong { font-size: 13px; overflow-wrap: anywhere; }
+.app-shell--workspace .role-actions button > small { font-size: 11px; }
+.app-shell--workspace .scope-card strong { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--workspace .scope-card p { font-size: 12px; line-height: 1.5; }
+.app-shell--workspace .scope-list strong { font-size: 12px; }
+.app-shell--workspace .scope-list small { font-size: 11px; }
+.app-shell--workspace .action-list strong { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--workspace .action-list small { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--workspace .module-page,
+.app-shell--workspace .data-panel,
+.app-shell--workspace .settings-card,
+.app-shell--workspace .panel { min-width: 0; }
+.app-shell--workspace .module-header h1 { font-size: 29px; }
+.app-shell--workspace .module-header p { max-width: 780px; font-size: 13px; line-height: 1.6; }
+.app-shell--workspace .module-primary,
+.app-shell--workspace .secondary-button,
+.app-shell--workspace .module-toolbar select,
+.app-shell--workspace .module-search input,
+.app-shell--workspace .filter-pills button { font-size: 13px; }
+.app-shell--workspace .table-head,
+.app-shell--workspace .table-row { min-width: 760px; }
+.app-shell--workspace .data-panel:has(.table-head) { overflow-x: auto; }
+.app-shell--workspace .table-head { font-size: 10px; }
+.app-shell--workspace .table-row { min-height: 76px; font-size: 12px; }
+.app-shell--workspace .table-row > * { min-width: 0; overflow-wrap: anywhere; }
+.app-shell--workspace .table-row strong { font-size: 13px; }
+.app-shell--workspace .table-row small { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell--workspace .report-status,
+.app-shell--workspace .validate-button { font-size: 11px; }
+.app-shell--workspace .team-overview span { font-size: 12px; }
+.app-shell--workspace .team-overview small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .member-info h3 { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--workspace .member-info p,
+.app-shell--workspace .member-info small,
+.app-shell--workspace .member-info span,
+.app-shell--workspace .member-state { font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.app-shell--workspace .member-access-controls label { font-size: 11px; }
+.app-shell--workspace .member-access-controls select { font-size: 12px; }
+.app-shell--workspace .dossier-list { overflow-x: auto; }
+.app-shell--workspace .dossier-list > article {
+  grid-template-columns: minmax(140px, .8fr) minmax(180px, 1.3fr) minmax(130px, 1fr) minmax(140px, .9fr) 28px;
+  gap: 12px;
+  min-width: 850px;
+  font-size: 11px;
+}
+.app-shell--workspace .dossier-list > article strong,
+.app-shell--workspace .dossier-list > article b { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell--workspace .dossier-list > article small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .team-overview,
+.app-shell--workspace .cash-metrics { min-width: 0; }
+.app-shell--workspace .settings-nav button { font-size: 12px; }
+.app-shell--workspace .settings-heading h3,
+.app-shell--workspace .settings-section h3 { font-size: 15px; }
+.app-shell--workspace .settings-heading p,
+.app-shell--workspace .settings-section p { font-size: 12px; line-height: 1.5; }
+.app-shell--workspace .settings-card label > span { font-size: 12px; }
+.app-shell--workspace .settings-card input,
+.app-shell--workspace .settings-card select { min-width: 0; font-size: 13px; }
+.app-shell--workspace .settings-actions button { font-size: 13px; }
+.app-shell--workspace .toast { max-width: min(520px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+.app-shell--workspace .status-pill,
+.app-shell--workspace .project-ref { font-size: 10px; }
+.app-shell--workspace .site-card h4,
+.app-shell--workspace .portfolio-card h3 { font-size: 15px; overflow-wrap: anywhere; }
+.app-shell--workspace .site-card__name p,
+.app-shell--workspace .portfolio-card p,
+.app-shell--workspace .portfolio-progress,
+.app-shell--workspace .portfolio-meta span,
+.app-shell--workspace .progress-heading { font-size: 12px; line-height: 1.45; }
+.app-shell--workspace .site-meta div span { font-size: 11px; }
+.app-shell--workspace .site-meta div strong { font-size: 12px; }
+.app-shell--workspace .compact-progress strong { font-size: 12px; }
+.app-shell--workspace .task-summary span { font-size: 12px; }
+.app-shell--workspace .task-summary small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .task-summary__progress strong { font-size: 13px; }
+.app-shell--workspace .task-status-control { min-height: 38px; font-size: 12px; }
+.app-shell--workspace .task-main h3 { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--workspace .task-main p,
+.app-shell--workspace .task-assignee small,
+.app-shell--workspace .task-due small,
+.app-shell--workspace .task-due span { font-size: 12px; line-height: 1.4; }
+.app-shell--workspace .priority { font-size: 10px; }
+.app-shell--workspace .photo-status strong { font-size: 14px; }
+.app-shell--workspace .photo-status small,
+.app-shell--workspace .sync-queue > span,
+.app-shell--workspace .photo-card p,
+.app-shell--workspace .photo-proof { font-size: 11px; line-height: 1.45; }
+.app-shell--workspace .photo-card h3 { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--workspace .photo-card__image > span { font-size: 11px; }
+.app-shell--workspace .report-callout strong { font-size: 14px; }
+.app-shell--workspace .report-callout p,
+.app-shell--workspace .report-callout button { font-size: 12px; line-height: 1.45; }
+.app-shell--workspace .cash-metrics span,
+.app-shell--workspace .cash-metrics small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .cash-metrics strong { font-size: 19px; overflow-wrap: anywhere; }
+.app-shell--workspace .amount-total { font-size: 13px; }
+.app-shell--workspace .recommendation strong { font-size: 12px; }
+.app-shell--workspace .recommendation p,
+.app-shell--workspace .recommendation button,
+.app-shell--workspace .public-warning p,
+.app-shell--workspace .public-warning strong { font-size: 11px; line-height: 1.45; }
+.app-shell--workspace .budget-row > div:first-child,
+.app-shell--workspace .budget-row > span,
+.app-shell--workspace .budget-progress { font-size: 12px; line-height: 1.4; }
+.app-shell--workspace .budget-row small { font-size: 11px; }
+.app-shell--workspace .payment-status { font-size: 11px; }
+.app-shell--workspace .clock-status { font-size: 12px; }
+.app-shell--workspace .attendance-history { font-size: 12px; }
+.app-shell--workspace .attendance-history small,
+.app-shell--workspace .attendance-history time { font-size: 11px; }
+.app-shell--workspace .invoice-register__heading h2 { font-size: 16px; }
+.app-shell--workspace .invoice-register__heading p { font-size: 12px; }
+.app-shell--workspace .invoice-register__head { font-size: 10px; }
+.app-shell--workspace .invoice-register__row { font-size: 12px; }
+.app-shell--workspace .invoice-register__row > div:first-child strong { font-size: 14px; }
+.app-shell--workspace .invoice-register__row small,
+.app-shell--workspace .invoice-status,
+.app-shell--workspace .invoice-register__actions button,
+.app-shell--workspace .invoice-register__empty { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .billing-summary span { font-size: 11px; }
+.app-shell--workspace .billing-summary strong { font-size: 15px; }
+.app-shell--workspace .billing-summary small { font-size: 10px; }
+.app-shell--workspace .profile-photo-picker { font-size: 12px; }
+.app-shell--workspace .profile-photo-controls > small { font-size: 11px; }
+.app-shell--workspace .preference-list strong { font-size: 13px; }
+.app-shell--workspace .preference-list small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .security-list strong { font-size: 13px; }
+.app-shell--workspace .security-list small { font-size: 11px; line-height: 1.4; }
+.app-shell--workspace .role-badge { font-size: 11px; }
+.app-shell--workspace .readonly-notice strong,
+.app-shell--workspace .permission-summary strong { font-size: 12px; }
+.app-shell--workspace .readonly-notice small,
+.app-shell--workspace .permission-summary p { font-size: 11px; line-height: 1.45; }
+
+@media (max-width: 1100px) {
+  .app-shell--workspace .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell--workspace .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--workspace .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--workspace .settings-nav { display: flex; overflow-x: auto; }
+  .app-shell--workspace .settings-nav button { min-width: max-content; }
+  .app-shell--workspace .team-grid,
+  .app-shell--workspace .finance-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .app-shell--workspace .welcome h1 { font-size: 26px; }
+  .app-shell--workspace .module-header h1 { font-size: 24px; }
+  .app-shell--workspace .module-header p { font-size: 12px; }
+  .app-shell--workspace .team-overview { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--workspace .data-panel:has(.table-head) { overflow-x: visible; }
+  .app-shell--workspace .table-head { display: none; }
+  .app-shell--workspace .table-row { min-width: 0; overflow-wrap: anywhere; }
+  .app-shell--workspace .dossier-list > article {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 8px;
+    padding: 12px 0;
+  }
+  .app-shell--workspace .settings-card { padding: 16px; }
+}
+
+.app-shell--enterprise-admin {
+  min-width: 0;
+}
+.app-shell--enterprise-admin .sidebar__nav button,
+.app-shell--enterprise-admin .sidebar__footer > button { font-size: 13px; }
+.app-shell--enterprise-admin .nav-label { font-size: 10px; }
+.app-shell--enterprise-admin .tenant strong,
+.app-shell--enterprise-admin .profile-mini strong { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .tenant small,
+.app-shell--enterprise-admin .profile-mini small { font-size: 10px; }
+.app-shell--enterprise-admin .topbar__title h2 { font-size: 20px; }
+.app-shell--enterprise-admin .topbar__title p,
+.app-shell--enterprise-admin .connection { font-size: 12px; }
+.app-shell--enterprise-admin .welcome h1 { font-size: 30px; }
+.app-shell--enterprise-admin .welcome p,
+.app-shell--enterprise-admin .panel__heading p,
+.app-shell--enterprise-admin .quick-actions > div > p { font-size: 13px; line-height: 1.55; }
+.app-shell--enterprise-admin .metric-card div > span { font-size: 12px; }
+.app-shell--enterprise-admin .metric-card small { font-size: 11px; line-height: 1.4; }
+.app-shell--enterprise-admin .panel__heading h3,
+.app-shell--enterprise-admin .quick-actions h3 { font-size: 16px; }
+.app-shell--enterprise-admin .role-actions button > strong { font-size: 13px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .role-actions button > small { font-size: 11px; }
+.app-shell--enterprise-admin .scope-card strong { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .scope-card p { font-size: 12px; line-height: 1.5; }
+.app-shell--enterprise-admin .scope-list strong { font-size: 12px; }
+.app-shell--enterprise-admin .scope-list small { font-size: 11px; }
+.app-shell--enterprise-admin .action-list strong { font-size: 13px; }
+.app-shell--enterprise-admin .action-list small { font-size: 11px; }
+.app-shell--enterprise-admin .module-page,
+.app-shell--enterprise-admin .data-panel,
+.app-shell--enterprise-admin .settings-card { min-width: 0; }
+.app-shell--enterprise-admin .module-header h1 { font-size: 29px; }
+.app-shell--enterprise-admin .module-header p { max-width: 780px; font-size: 13px; line-height: 1.6; }
+.app-shell--enterprise-admin .module-primary,
+.app-shell--enterprise-admin .secondary-button,
+.app-shell--enterprise-admin .module-toolbar select,
+.app-shell--enterprise-admin .module-search input,
+.app-shell--enterprise-admin .filter-pills button { font-size: 13px; }
+.app-shell--enterprise-admin .team-overview span { font-size: 12px; }
+.app-shell--enterprise-admin .team-overview small { font-size: 11px; line-height: 1.4; }
+.app-shell--enterprise-admin .member-info h3 { font-size: 14px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .member-info p,
+.app-shell--enterprise-admin .member-info small,
+.app-shell--enterprise-admin .member-info span,
+.app-shell--enterprise-admin .member-state { font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .member-access-controls label { font-size: 11px; }
+.app-shell--enterprise-admin .member-access-controls select { font-size: 12px; }
+.app-shell--enterprise-admin .table-head,
+.app-shell--enterprise-admin .table-row { min-width: 760px; }
+.app-shell--enterprise-admin .data-panel:has(.table-head) { overflow-x: auto; }
+.app-shell--enterprise-admin .table-head { font-size: 10px; }
+.app-shell--enterprise-admin .table-row { min-height: 76px; font-size: 12px; }
+.app-shell--enterprise-admin .table-row strong { font-size: 13px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .table-row small { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .report-status,
+.app-shell--enterprise-admin .validate-button { font-size: 11px; }
+.app-shell--enterprise-admin .dossier-list { overflow-x: auto; }
+.app-shell--enterprise-admin .dossier-list > article {
+  grid-template-columns: minmax(140px, .8fr) minmax(180px, 1.3fr) minmax(130px, 1fr) minmax(140px, .9fr) 28px;
+  gap: 12px;
+  min-width: 850px;
+  font-size: 11px;
+}
+.app-shell--enterprise-admin .dossier-list > article strong,
+.app-shell--enterprise-admin .dossier-list > article b { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell--enterprise-admin .dossier-list > article small { font-size: 11px; line-height: 1.4; }
+.app-shell--enterprise-admin .settings-nav button { font-size: 12px; }
+.app-shell--enterprise-admin .settings-heading h3,
+.app-shell--enterprise-admin .settings-section h3 { font-size: 15px; }
+.app-shell--enterprise-admin .settings-heading p,
+.app-shell--enterprise-admin .settings-section p { font-size: 12px; line-height: 1.5; }
+.app-shell--enterprise-admin .settings-card label > span { font-size: 12px; }
+.app-shell--enterprise-admin .settings-card input,
+.app-shell--enterprise-admin .settings-card select { min-width: 0; font-size: 13px; }
+.app-shell--enterprise-admin .settings-actions button { font-size: 13px; }
+
+@media (max-width: 1000px) {
+  .app-shell--enterprise-admin .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--enterprise-admin .settings-nav { display: flex; overflow-x: auto; }
+  .app-shell--enterprise-admin .settings-nav button { min-width: max-content; }
+  .app-shell--enterprise-admin .team-grid,
+  .app-shell--enterprise-admin .finance-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .app-shell--enterprise-admin .welcome h1 { font-size: 26px; }
+  .app-shell--enterprise-admin .module-header h1 { font-size: 24px; }
+  .app-shell--enterprise-admin .module-header p { font-size: 12px; }
+  .app-shell--enterprise-admin .team-overview { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--enterprise-admin .data-panel:has(.table-head) { overflow-x: visible; }
+  .app-shell--enterprise-admin .table-head { display: none; }
+  .app-shell--enterprise-admin .table-row { min-width: 0; overflow-wrap: anywhere; }
+  .app-shell--enterprise-admin .dossier-list > article {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 8px;
+    padding: 12px 0;
+  }
 }

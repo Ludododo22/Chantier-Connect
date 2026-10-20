@@ -29,6 +29,7 @@ interface UserRow {
   session_version: number
   requires_user_consent: boolean
   sensitive_data_consented: boolean
+  must_change_password: boolean
   sections: string[]
   capabilities: Capability[]
   tenant_status?: string | null
@@ -61,6 +62,7 @@ export function publicUser(user: AuthUser) {
     assignedSiteId: user.assignedSiteId,
     requiresUserConsent: user.requiresUserConsent,
     sensitiveDataConsented: user.sensitiveDataConsented,
+    mustChangePassword: user.mustChangePassword,
     sections: user.sections,
     capabilities: user.capabilities,
     profilePhotoUrl: user.profilePhotoUrl,
@@ -85,6 +87,7 @@ function asAuthUser(row: UserRow): AuthUser {
     sessionVersion: row.session_version,
     requiresUserConsent: row.requires_user_consent,
     sensitiveDataConsented: row.sensitive_data_consented,
+    mustChangePassword: row.must_change_password,
     sections: access.sections,
     capabilities: access.capabilities,
     profilePhotoUrl: row.has_profile_photo
@@ -139,7 +142,7 @@ export async function authenticate(
     `SELECT u.id, u.email, u.phone, u.full_name, u.initials, u.role,
             u.role_label, u.tenant_id, u.tenant_name, u.tenant_plan,
             u.assigned_site, u.assigned_site_id, assigned.name AS assigned_site_name,
-            u.session_version, u.requires_user_consent,
+            u.session_version, u.requires_user_consent, u.must_change_password,
             (u.sensitive_data_consented_at IS NOT NULL) AS sensitive_data_consented,
             u.sections, u.capabilities,
             t.status AS tenant_status, s.status AS subscription_status,
@@ -156,6 +159,20 @@ export async function authenticate(
   const row = result.rows[0]
   if (!row) {
     response.status(401).json({ error: "Compte introuvable ou désactivé." })
+    return
+  }
+
+  if (
+    row.must_change_password &&
+    !(
+      request.method === "POST" &&
+      request.originalUrl.split("?")[0] === "/api/auth/first-password"
+    )
+  ) {
+    response.status(403).json({
+      error: "Vous devez remplacer votre mot de passe provisoire avant de continuer.",
+      code: "PASSWORD_CHANGE_REQUIRED",
+    })
     return
   }
 
@@ -212,7 +229,7 @@ export async function authenticatePassword(
     `SELECT u.id, u.email, u.phone, u.password_hash, u.full_name, u.initials,
             u.role, u.role_label, u.tenant_id, u.tenant_name, u.tenant_plan,
             u.assigned_site, u.assigned_site_id, assigned.name AS assigned_site_name,
-            u.session_version, u.requires_user_consent,
+            u.session_version, u.requires_user_consent, u.must_change_password,
             (u.sensitive_data_consented_at IS NOT NULL) AS sensitive_data_consented,
             u.sections, u.capabilities,
             t.status AS tenant_status, s.status AS subscription_status,

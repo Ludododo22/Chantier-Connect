@@ -637,6 +637,55 @@ try {
     roleSessions.get("CONDUCTEUR").cookie,
   )
   assert.ok(leadTasks.body.data.some((task) => task.id === roleTask.body.data.id))
+  const conductorTask = await request(
+    baseUrl,
+    "/api/tasks",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        title: "Tâche coordonnée par le conducteur",
+        description: "Consigne de vérification",
+        category: "Contrôle qualité",
+        priority: "Haute",
+        assignedTo: roleAccounts.get("COMPAGNON").id,
+        dueDate: null,
+      }),
+    },
+    roleSessions.get("CONDUCTEUR").cookie,
+  )
+  assert.equal(conductorTask.response.status, 201)
+  assert.equal(conductorTask.body.data.assignedTo, roleAccounts.get("COMPAGNON").id)
+  assert.equal(conductorTask.body.data.priority, "Haute")
+  assert.equal(conductorTask.body.data.category, "Contrôle qualité")
+  const conductorTaskVisibleToMember = await request(
+    baseUrl,
+    "/api/tasks",
+    {},
+    roleSessions.get("COMPAGNON").cookie,
+  )
+  assert.ok(
+    conductorTaskVisibleToMember.body.data.some(
+      (task) => task.id === conductorTask.body.data.id,
+    ),
+    "La tâche affectée par le conducteur doit apparaître chez son responsable.",
+  )
+  const conductorCrossTenantTask = await request(
+    baseUrl,
+    "/api/tasks",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: siteResults[1].body.data[0].id,
+        title: "Tâche inter-entreprise refusée",
+        assignedTo: roleAccounts.get("COMPAGNON").id,
+      }),
+    },
+    roleSessions.get("CONDUCTEUR").cookie,
+  )
+  assert.equal(conductorCrossTenantTask.response.status, 404)
   const unrelatedTaskUpdate = await request(
     baseUrl,
     `/api/tasks/${taskResults[0].body.data[0].id}/status`,
@@ -970,6 +1019,17 @@ try {
   )
   console.info("OK permissions rôles : responsabilités chantier/rapport distinctes et lecture/écriture financière séparées.")
 
+  const teammateActivityTitle = "Action équipe visible du compte entreprise"
+  await temporaryClient.query(
+    `INSERT INTO tasks (tenant_id, site_id, title, created_by)
+     VALUES ($1, $2, $3, $4)`,
+    [
+      fixtureTenants[0].id,
+      roleSiteId,
+      teammateActivityTitle,
+      roleAccounts.get("COMPAGNON").id,
+    ],
+  )
   const activity = await request(
     baseUrl,
     "/api/activity/recent",
@@ -983,7 +1043,39 @@ try {
     ),
     "L’activité récente doit inclure les données réelles de l’acteur.",
   )
-  console.info("OK activité : les événements réels de l’acteur sont exposés.")
+  assert.ok(
+    activity.body.data.some((entry) => entry.title === teammateActivityTitle),
+    "L’administrateur doit voir les opérations de son entreprise, pas uniquement les siennes.",
+  )
+  const memberActivity = await request(
+    baseUrl,
+    "/api/activity/recent",
+    {},
+    roleSessions.get("COMPAGNON").cookie,
+  )
+  assert.equal(memberActivity.response.status, 200)
+  assert.ok(
+    memberActivity.body.data.some((entry) => entry.title === teammateActivityTitle),
+    "Un membre doit conserver l’accès à ses propres opérations.",
+  )
+  assert.equal(
+    memberActivity.body.data.some((entry) => entry.title === fixtureTenants[0].taskTitle),
+    false,
+    "Un membre ne doit pas voir l’activité privée d’un autre utilisateur.",
+  )
+  const otherTenantActivity = await request(
+    baseUrl,
+    "/api/activity/recent",
+    {},
+    sessions[1].cookie,
+  )
+  assert.equal(otherTenantActivity.response.status, 200)
+  assert.equal(
+    otherTenantActivity.body.data.some((entry) => entry.title === teammateActivityTitle),
+    false,
+    "L’activité de l’entreprise ne doit jamais franchir la frontière tenant.",
+  )
+  console.info("OK activité : tableau admin entreprise agrégé, autres rôles limités à leurs événements et tenants isolés.")
 
   for (let index = 0; index < sessions.length; index += 1) {
     const otherIndex = 1 - index
@@ -1185,7 +1277,7 @@ try {
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ maxUsers: 777 }),
+      body: JSON.stringify({ maxUsers: 777, maxStorageMb: 1 }),
     },
     editorSession.cookie,
   )
@@ -1196,6 +1288,19 @@ try {
     Number(plan.rows[0].monthly_price_fcfa),
   )
   assert.equal(partialPlanUpdate.body.data.maxSites, plan.rows[0].max_sites)
+  assert.equal(partialPlanUpdate.body.data.maxStorageMb, 1)
+  const laterPartialPlanUpdate = await request(
+    baseUrl,
+    `/api/platform/plans/${plan.rows[0].id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maxUsers: 778 }),
+    },
+    editorSession.cookie,
+  )
+  assert.equal(laterPartialPlanUpdate.response.status, 200)
+  assert.equal(laterPartialPlanUpdate.body.data.maxStorageMb, 1)
   console.info("OK plan : un PATCH partiel préserve les champs absents.")
 
   const registrationRequestId = randomUUID()
@@ -1239,12 +1344,35 @@ try {
     [conversion.body.data.id],
   )
   assert.equal(convertedAdmin.rows[0].phone, registrationPhone)
-  const clientAdminSession = await login(
+  let clientAdminSession = await login(
     baseUrl,
     convertedEmail,
     clientTemporaryPassword,
   )
   assert.equal(clientAdminSession.user.tenantId, conversion.body.data.id)
+  assert.equal(clientAdminSession.user.mustChangePassword, true)
+  const blockedBeforePasswordChange = await request(
+    baseUrl,
+    "/api/company/settings",
+    {},
+    clientAdminSession.cookie,
+  )
+  assert.equal(blockedBeforePasswordChange.response.status, 403)
+  assert.equal(blockedBeforePasswordChange.body.code, "PASSWORD_CHANGE_REQUIRED")
+  const clientPermanentPassword = randomBytes(18).toString("base64url")
+  const firstPasswordChange = await request(
+    baseUrl,
+    "/api/auth/first-password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword: clientPermanentPassword }),
+    },
+    clientAdminSession.cookie,
+  )
+  assert.equal(firstPasswordChange.response.status, 204)
+  clientAdminSession = await login(baseUrl, convertedEmail, clientPermanentPassword)
+  assert.equal(clientAdminSession.user.mustChangePassword, false)
   const initialCompanySettings = await request(
     baseUrl,
     "/api/company/settings",
@@ -1291,6 +1419,67 @@ try {
     clientAdminSession.cookie,
   )
   assert.equal(clientSite.response.status, 201)
+  const signatureOnlyPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const acceptedQuotaPhoto = await request(
+    baseUrl,
+    "/api/photos",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: clientSite.body.data.id,
+        caption: "Photo de recette",
+        contentType: "image/png",
+        imageBase64: signatureOnlyPng.toString("base64"),
+      }),
+    },
+    clientAdminSession.cookie,
+  )
+  assert.equal(acceptedQuotaPhoto.response.status, 201)
+  const quotaPhoto = Buffer.alloc(1024 * 1024 - signatureOnlyPng.length, 0)
+  await temporaryClient.query(
+    `INSERT INTO photos (
+       tenant_id, site_id, author_id, caption, content_type, image_data, sha256
+     ) VALUES ($1, $2, $3, 'Quota test', 'image/png', $4, $5)`,
+    [
+      conversion.body.data.id,
+      clientSite.body.data.id,
+      clientAdminSession.user.id,
+      quotaPhoto,
+      createHash("sha256").update(quotaPhoto).digest("hex"),
+    ],
+  )
+  const quotaRejectedProfilePhoto = await request(
+    baseUrl,
+    "/api/auth/profile/photo",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contentType: "image/png",
+        imageBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64"),
+      }),
+    },
+    clientAdminSession.cookie,
+  )
+  assert.equal(quotaRejectedProfilePhoto.response.status, 409)
+  const quotaRejectedWorkPhoto = await request(
+    baseUrl,
+    "/api/photos",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: clientSite.body.data.id,
+        caption: "Photo au-delà du quota",
+        contentType: "image/png",
+        imageBase64: signatureOnlyPng.toString("base64"),
+      }),
+    },
+    clientAdminSession.cookie,
+  )
+  assert.equal(quotaRejectedWorkPhoto.response.status, 409)
+  console.info("OK stockage : uploads de profil et de chantier contrôlés par le quota.")
   const duplicateNameSite = await request(
     baseUrl,
     "/api/sites",
@@ -1368,12 +1557,32 @@ try {
   assert.ok(clientSiteDetail.body.data.assignedTeam.some(
     (member) => member.id === clientMember.body.data.id,
   ))
-  const clientMemberSession = await login(
+  let clientMemberSession = await login(
     baseUrl,
     clientMemberEmail,
     clientMemberPassword,
     "COMPAGNON",
   )
+  assert.equal(clientMemberSession.user.mustChangePassword, true)
+  const memberPermanentPassword = randomBytes(18).toString("base64url")
+  const memberFirstPasswordChange = await request(
+    baseUrl,
+    "/api/auth/first-password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword: memberPermanentPassword }),
+    },
+    clientMemberSession.cookie,
+  )
+  assert.equal(memberFirstPasswordChange.response.status, 204)
+  clientMemberSession = await login(
+    baseUrl,
+    clientMemberEmail,
+    memberPermanentPassword,
+    "COMPAGNON",
+  )
+  assert.equal(clientMemberSession.user.mustChangePassword, false)
 
   const activationWithoutEndDate = await request(
     baseUrl,
@@ -1569,6 +1778,69 @@ try {
   assert.equal(replacementSession.user.id, sessions[1].user.id)
   console.info("OK reset : token à usage unique et révocation des sessions précédentes.")
 
+  const editorTemporaryPassword = randomBytes(18).toString("base64url")
+  const editorPasswordReset = await request(
+    baseUrl,
+    `/api/platform/users/${clientAdminSession.user.id}/temporary-password`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ temporaryPassword: editorTemporaryPassword }),
+    },
+    editorSession.cookie,
+  )
+  assert.equal(editorPasswordReset.response.status, 204)
+  assert.equal(
+    (await request(baseUrl, "/api/auth/me", {}, clientAdminSession.cookie)).response.status,
+    401,
+  )
+  const editorResetSession = await login(
+    baseUrl,
+    convertedEmail,
+    editorTemporaryPassword,
+  )
+  assert.equal(editorResetSession.user.mustChangePassword, true)
+  const editorResetBlockedRequest = await request(
+    baseUrl,
+    "/api/sites",
+    {},
+    editorResetSession.cookie,
+  )
+  assert.equal(editorResetBlockedRequest.response.status, 403)
+  assert.equal(editorResetBlockedRequest.body.code, "PASSWORD_CHANGE_REQUIRED")
+  const editorResetAudit = await temporaryClient.query(
+    `SELECT action, payload_masked FROM audit_logs WHERE target_id = $1
+     AND action = 'TEMPORARY_PASSWORD_ISSUED'`,
+    [clientAdminSession.user.id],
+  )
+  assert.equal(editorResetAudit.rowCount, 1)
+  assert.equal(JSON.stringify(editorResetAudit.rows[0].payload_masked).includes(editorTemporaryPassword), false)
+  const editorResetAuditApi = await request(
+    baseUrl,
+    `/api/platform/audit-logs?action=TEMPORARY_PASSWORD_ISSUED&tenantId=${conversion.body.data.id}`,
+    {},
+    editorSession.cookie,
+  )
+  assert.equal(editorResetAuditApi.response.status, 200)
+  assert.equal(editorResetAuditApi.body.data[0].targetName, "Admin conversion")
+  const afterEditorResetPassword = randomBytes(18).toString("base64url")
+  const afterEditorReset = await request(
+    baseUrl,
+    "/api/auth/first-password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword: afterEditorResetPassword }),
+    },
+    editorResetSession.cookie,
+  )
+  assert.equal(afterEditorReset.response.status, 204)
+  assert.equal(
+    (await login(baseUrl, convertedEmail, afterEditorResetPassword)).user.mustChangePassword,
+    false,
+  )
+  console.info("OK mot de passe provisoire : changement obligatoire, blocage des routes, révocation et audit sans secret.")
+
   const site = siteResults[0].body.data[0]
   const archivedSite = await request(
     baseUrl,
@@ -1601,6 +1873,15 @@ try {
   await temporaryClient.query("UPDATE tenants SET status = 'Archivé' WHERE id = $1", [
     fixtureTenants[0].id,
   ])
+  const temporaryPasswordRollbackSql = await readFile(
+    path.join(
+      migrationsDirectory,
+      "rollback",
+      "011_temporary_password_and_storage_limits.sql",
+    ),
+    "utf8",
+  )
+  await temporaryClient.query(temporaryPasswordRollbackSql)
   const rollbackSql = await readFile(
     path.join(
       migrationsDirectory,
@@ -1618,7 +1899,17 @@ try {
               SELECT 1 FROM information_schema.columns
               WHERE table_schema = 'public' AND table_name = 'users'
                 AND column_name = 'session_version'
-            ) AS has_session_version
+            ) AS has_session_version,
+            EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'users'
+                AND column_name = 'must_change_password'
+            ) AS has_temporary_password_flag,
+            EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'subscription_plans'
+                AND column_name = 'max_storage_mb'
+            ) AS has_storage_limit
      FROM tenants t JOIN sites s ON s.tenant_id = t.id
      WHERE t.id = $1 AND s.id = $2`,
     [fixtureTenants[0].id, site.id],
@@ -1628,10 +1919,12 @@ try {
   assert.equal(rollbackState.rows[0].audit_table, null)
   assert.equal(rollbackState.rows[0].reset_table, null)
   assert.equal(rollbackState.rows[0].has_session_version, false)
+  assert.equal(rollbackState.rows[0].has_temporary_password_flag, false)
+  assert.equal(rollbackState.rows[0].has_storage_limit, false)
   console.info("OK migration : retour arrière structurel et conversion des statuts archivés.")
 
   console.info(
-    `Simulation locale terminée avec succès; ${migrations.length} migrations appliquées puis la migration 010 annulée sur une base temporaire.`,
+    `Simulation locale terminée avec succès; ${migrations.length} migrations appliquées puis les migrations 011 et 010 annulées sur une base temporaire.`,
   )
 } finally {
   let cleanupError
