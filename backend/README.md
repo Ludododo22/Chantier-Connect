@@ -51,18 +51,10 @@ npm run dev
 
 Le serveur écoute sur `PORT` (3001 par défaut). Pour utiliser le frontend local, démarrez-le séparément ; son proxy Vite cible `http://127.0.0.1:3001` par défaut.
 
-## Dépôt GitHub indépendant
+## Dépôt indépendant
 
-Créez le dépôt `Ludododo22/Chantier-Connect-backend`, puis exécutez ces commandes depuis ce dossier :
-
-```powershell
-git init
-git add README.md
-git add .
-git commit -m "first commit"
-git branch -M main
-git remote add origin https://github.com/Ludododo22/Chantier-Connect-backend.git
-git push -u origin main
-```
-
-`git add .` inclut les sources, migrations et manifestes sans les fichiers ignorés comme `.env`.
+Ce dossier est publié séparément dans
+[`Ludododo22/Chantier-Connect-backend`](https://github.com/Ludododo22/Chantier-Connect-backend).
+À la racine de ce dépôt, utilisez `npm install`, `npm run build` et `npm start`.
+Les secrets locaux (`.env`), dépendances (`node_modules/`) et sorties de build
+(`dist/`) sont exclus par `.gitignore`.
