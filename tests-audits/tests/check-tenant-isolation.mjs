@@ -498,9 +498,83 @@ try {
     true,
   )
   assert.equal(
+    roleSessions.get("COMPTABLE").user.sections.includes("Factures fournisseurs"),
+    true,
+  )
+  const contractTestSite = siteResults[0].body.data[0]
+  const distinctSiteBudgets = await request(
+    baseUrl,
+    `/api/sites/${roleSiteId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: contractTestSite.name,
+        location: contractTestSite.location,
+        description: contractTestSite.description,
+        city: contractTestSite.city,
+        province: contractTestSite.province,
+        clientName: contractTestSite.clientName,
+        workType: contractTestSite.workType,
+        contractReference: contractTestSite.contractReference,
+        status: contractTestSite.status ?? "En cours",
+        costBudgetFcfa: 1750000,
+        contractAmountFcfa: 3250000,
+        startDate: contractTestSite.startDate,
+        endDate: contractTestSite.endDate,
+        plannedDurationDays: contractTestSite.plannedDurationDays,
+      }),
+    },
+    sessions[0].cookie,
+  )
+  assert.equal(distinctSiteBudgets.response.status, 200)
+  assert.equal(distinctSiteBudgets.body.data.costBudgetFcfa, "1750000")
+  assert.equal(distinctSiteBudgets.body.data.contractAmountFcfa, "3250000")
+  const compatibilityBudget = await temporaryClient.query(
+    "SELECT budget_fcfa::text FROM sites WHERE id = $1",
+    [roleSiteId],
+  )
+  assert.equal(compatibilityBudget.rows[0].budget_fcfa, "1750000")
+  console.info("OK budget chantier : coûts prévus distincts du montant client, compatibilité historique conservée.")
+  const conductorSiteBudgetVisibility = await request(
+    baseUrl,
+    "/api/sites",
+    {},
+    roleSessions.get("CONDUCTEUR").cookie,
+  )
+  assert.equal(conductorSiteBudgetVisibility.response.status, 200)
+  assert.equal(conductorSiteBudgetVisibility.body.data[0].costBudgetFcfa, null)
+  assert.equal(conductorSiteBudgetVisibility.body.data[0].contractAmountFcfa, null)
+  assert.equal(
+    roleSessions.get("CONDUCTEUR").user.capabilities.includes("read_finance"),
+    false,
+  )
+  assert.equal(
+    roleSessions.get("CHEF_CHANTIER").user.sections.includes("Pointage"),
+    true,
+  )
+  assert.equal(
+    roleSessions.get("CHEF_CHANTIER").user.capabilities.includes("manage_finance"),
+    false,
+  )
+  assert.equal(
+    roleSessions.get("CHEF_CHANTIER").user.capabilities.includes("manage_team"),
+    false,
+  )
+  assert.equal(
     roleSessions.get("MAITRE_OUVRAGE").user.sections.includes("Chantiers"),
     true,
   )
+  const moSiteVisibility = await request(
+    baseUrl,
+    "/api/sites",
+    {},
+    roleSessions.get("MAITRE_OUVRAGE").cookie,
+  )
+  assert.equal(moSiteVisibility.response.status, 200)
+  assert.equal(moSiteVisibility.body.data.length, 1)
+  assert.equal(moSiteVisibility.body.data[0].costBudgetFcfa, null)
+  assert.equal(moSiteVisibility.body.data[0].contractAmountFcfa, null)
   assert.equal(
     roleSessions.get("ADMIN_ENTERPRISE").user.capabilities.includes("manage_finance"),
     false,
@@ -508,6 +582,14 @@ try {
   assert.equal(
     roleSessions.get("ADMIN_ENTERPRISE").user.capabilities.includes("read_finance"),
     true,
+  )
+  assert.equal(
+    roleSessions.get("ADMIN_ENTERPRISE").user.capabilities.includes("manage_finance_planning"),
+    true,
+  )
+  assert.equal(
+    roleSessions.get("COMPTABLE").user.capabilities.includes("manage_finance_planning"),
+    false,
   )
   assert.equal(
     roleSessions.get("COMPTABLE").user.capabilities.includes("manage_finance"),
@@ -616,6 +698,82 @@ try {
     companionTasks.body.data.map((task) => task.id),
     [roleTask.body.data.id],
   )
+  const taskAssignedToAnotherMember = await request(
+    baseUrl,
+    "/api/tasks",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        title: "Tâche affectée à un autre rôle",
+        assignedTo: roleAccounts.get("CHEF_CHANTIER").id,
+      }),
+    },
+    sessions[0].cookie,
+  )
+  assert.equal(taskAssignedToAnotherMember.response.status, 201)
+  const subcontractorTask = await request(
+    baseUrl,
+    "/api/tasks",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        title: "Mission confiée au sous-traitant",
+        dueDate: "2026-10-30",
+        assignedTo: roleAccounts.get("SOUS_TRAITANT").id,
+      }),
+    },
+    sessions[0].cookie,
+  )
+  assert.equal(subcontractorTask.response.status, 201)
+  const subcontractorTasks = await request(
+    baseUrl,
+    "/api/tasks",
+    {},
+    roleSessions.get("SOUS_TRAITANT").cookie,
+  )
+  assert.deepEqual(
+    subcontractorTasks.body.data.map((task) => task.id),
+    [subcontractorTask.body.data.id],
+  )
+  assert.equal(
+    subcontractorTasks.body.data.some(
+      (task) => task.id === roleTask.body.data.id,
+    ),
+    false,
+  )
+  const subcontractorUpdatesOwnTask = await request(
+    baseUrl,
+    `/api/tasks/${subcontractorTask.body.data.id}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "En cours" }),
+    },
+    roleSessions.get("SOUS_TRAITANT").cookie,
+  )
+  assert.equal(subcontractorUpdatesOwnTask.response.status, 200)
+  assert.equal(subcontractorUpdatesOwnTask.body.data.status, "En cours")
+  assert.equal(
+    companionTasks.body.data.some(
+      (task) => task.id === taskAssignedToAnotherMember.body.data.id,
+    ),
+    false,
+  )
+  const companionCannotUpdateAnotherMemberTask = await request(
+    baseUrl,
+    `/api/tasks/${taskAssignedToAnotherMember.body.data.id}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Terminée" }),
+    },
+    roleSessions.get("COMPAGNON").cookie,
+  )
+  assert.equal(companionCannotUpdateAnotherMemberTask.response.status, 404)
   for (const status of ["Bloquée", "En cours", "Terminée"]) {
     const updateAssignedTask = await request(
       baseUrl,
@@ -629,6 +787,26 @@ try {
     )
     assert.equal(updateAssignedTask.response.status, 200)
     assert.equal(updateAssignedTask.body.data.status, status)
+    const siteProgress = await request(
+      baseUrl,
+      "/api/sites",
+      {},
+      roleSessions.get("ADMIN_ENTERPRISE").cookie,
+    )
+    const taskCounts = await temporaryClient.query(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE status = 'Terminée')::int AS completed
+       FROM tasks WHERE tenant_id = $1 AND site_id = $2`,
+      [fixtureTenants[0].id, roleSiteId],
+    )
+    const expectedProgress = Math.round(
+      100 * taskCounts.rows[0].completed / taskCounts.rows[0].total,
+    )
+    assert.equal(
+      siteProgress.body.data.find((site) => site.id === roleSiteId).progress,
+      expectedProgress,
+      "La progression du chantier doit suivre automatiquement les tâches terminées.",
+    )
   }
   const leadTasks = await request(
     baseUrl,
@@ -766,6 +944,35 @@ try {
     roleSessions.get("SOUS_TRAITANT").cookie,
   )
   assert.equal(subcontractorCannotClockIn.response.status, 403)
+  const subcontractorCannotReadTeam = await request(
+    baseUrl,
+    "/api/team",
+    {},
+    roleSessions.get("SOUS_TRAITANT").cookie,
+  )
+  assert.equal(subcontractorCannotReadTeam.response.status, 403)
+  const subcontractorCannotReadFinance = await request(
+    baseUrl,
+    "/api/finance",
+    {},
+    roleSessions.get("SOUS_TRAITANT").cookie,
+  )
+  assert.equal(subcontractorCannotReadFinance.response.status, 403)
+  const subcontractorCannotCreateReport = await request(
+    baseUrl,
+    "/api/reports",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        workDone: "Rapport interdit au sous-traitant.",
+        crewCount: 1,
+      }),
+    },
+    roleSessions.get("SOUS_TRAITANT").cookie,
+  )
+  assert.equal(subcontractorCannotCreateReport.response.status, 403)
 
   const draftReport = await request(
     baseUrl,
@@ -860,6 +1067,27 @@ try {
     roleSessions.get("MAITRE_OUVRAGE").cookie,
   )
   assert.equal(moCannotCreateReport.response.status, 403)
+  const moCannotReadTasks = await request(
+    baseUrl,
+    "/api/tasks",
+    {},
+    roleSessions.get("MAITRE_OUVRAGE").cookie,
+  )
+  assert.equal(moCannotReadTasks.response.status, 403)
+  const moCannotReadTeam = await request(
+    baseUrl,
+    "/api/team",
+    {},
+    roleSessions.get("MAITRE_OUVRAGE").cookie,
+  )
+  assert.equal(moCannotReadTeam.response.status, 403)
+  const moCannotReadFinance = await request(
+    baseUrl,
+    "/api/finance",
+    {},
+    roleSessions.get("MAITRE_OUVRAGE").cookie,
+  )
+  assert.equal(moCannotReadFinance.response.status, 403)
 
   const accountantFinance = await request(
     baseUrl,
@@ -892,13 +1120,33 @@ try {
         entryType: "depense",
         siteId: roleSiteId,
         category: "Test",
-        description: "Opération refusée à l’administrateur",
+        description: "Prévision budgétaire créée par l’administrateur",
         amountFcfa: 1000,
+        status: "réalisé",
       }),
     },
     roleSessions.get("ADMIN_ENTERPRISE").cookie,
   )
-  assert.equal(adminFinanceMutation.response.status, 403)
+  assert.equal(adminFinanceMutation.response.status, 201)
+  assert.equal(adminFinanceMutation.body.data.status, "prévu")
+  const adminFinanceUpdate = await request(
+    baseUrl,
+    `/api/finance/${adminFinanceMutation.body.data.id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entryType: "depense",
+        siteId: roleSiteId,
+        category: "Fournitures",
+        description: "Prévision corrigée par l’administrateur",
+        amountFcfa: 1500,
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(adminFinanceUpdate.response.status, 200)
+  assert.equal(adminFinanceUpdate.body.data.status, "prévu")
   const accountantFinanceMutation = await request(
     baseUrl,
     "/api/finance",
@@ -928,6 +1176,23 @@ try {
     roleSessions.get("COMPTABLE").cookie,
   )
   assert.equal(accountantRealizeFinance.response.status, 200)
+  const adminCannotEditRealizedFinance = await request(
+    baseUrl,
+    `/api/finance/${financeEntryId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entryType: "depense",
+        siteId: roleSiteId,
+        category: "Fournitures",
+        description: "Modification après réalisation refusée",
+        amountFcfa: 2000,
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(adminCannotEditRealizedFinance.response.status, 409)
   const adminCannotRealizeFinance = await request(
     baseUrl,
     `/api/finance/${financeEntryId}/realize`,
@@ -954,13 +1219,42 @@ try {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         siteId: roleSiteId,
-        subject: "Dossier refusé",
+        subject: "Dossier préparé par l’administrateur",
         amountFcfa: 1000,
       }),
     },
     roleSessions.get("ADMIN_ENTERPRISE").cookie,
   )
-  assert.equal(adminPaymentMutation.response.status, 403)
+  assert.equal(adminPaymentMutation.response.status, 201)
+  assert.equal(adminPaymentMutation.body.data.status, "En préparation")
+  const adminPaymentUpdate = await request(
+    baseUrl,
+    `/api/payments/${adminPaymentMutation.body.data.id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        subject: "Dossier prévisionnel corrigé",
+        amountFcfa: 1200,
+        dueDate: null,
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(adminPaymentUpdate.response.status, 200)
+  assert.equal(adminPaymentUpdate.body.data.status, "En préparation")
+  const adminCannotChangePaymentStatus = await request(
+    baseUrl,
+    `/api/payments/${adminPaymentMutation.body.data.id}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Prêt à transmettre" }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(adminCannotChangePaymentStatus.response.status, 403)
   const accountantPaymentDossier = await request(
     baseUrl,
     "/api/payments",
@@ -977,7 +1271,7 @@ try {
   )
   assert.equal(accountantPaymentDossier.response.status, 201)
   const paymentDossierId = accountantPaymentDossier.body.data.id
-  for (const status of ["Prêt à transmettre", "En instruction", "Payé"]) {
+  for (const status of ["Prêt à transmettre", "En instruction"]) {
     const statusUpdate = await request(
       baseUrl,
       `/api/payments/${paymentDossierId}/status`,
@@ -990,6 +1284,59 @@ try {
     )
     assert.equal(statusUpdate.response.status, 200)
   }
+  const paymentWithoutReference = await request(
+    baseUrl,
+    `/api/payments/${paymentDossierId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Payé" }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(paymentWithoutReference.response.status, 400)
+  const paymentWithReference = await request(
+    baseUrl,
+    `/api/payments/${paymentDossierId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "Payé",
+        paymentReference: "RECETTE-001",
+      }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(paymentWithReference.response.status, 200)
+  assert.equal(paymentWithReference.body.data.paymentReference, "RECETTE-001")
+  const receivedPaymentEntry = await temporaryClient.query(
+    `SELECT entry_type, status, amount_fcfa::text, occurred_at
+     FROM finance_entries
+     WHERE site_id = $1 AND description LIKE '%RECETTE-001'`,
+    [roleSiteId],
+  )
+  assert.equal(receivedPaymentEntry.rowCount, 1)
+  assert.equal(receivedPaymentEntry.rows[0].entry_type, "encaissement")
+  assert.equal(receivedPaymentEntry.rows[0].status, "réalisé")
+  assert.equal(receivedPaymentEntry.rows[0].amount_fcfa, "2500")
+  assert.ok(receivedPaymentEntry.rows[0].occurred_at)
+  const adminCannotEditSubmittedPayment = await request(
+    baseUrl,
+    `/api/payments/${paymentDossierId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        subject: "Modification après transmission refusée",
+        amountFcfa: 3000,
+        dueDate: null,
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(adminCannotEditSubmittedPayment.response.status, 409)
   const financeAudit = await temporaryClient.query(
     `SELECT action, target_type, target_id, payload_masked
      FROM audit_logs
@@ -1017,8 +1364,137 @@ try {
       ["finance_entry", "payment_dossier"].includes(entry.target_type),
     ),
   )
+  const fiscalYear = new Date().getFullYear()
+  const companyBudgetUpdate = await request(
+    baseUrl,
+    "/api/company-operating-budget",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fiscalYear,
+        amountFcfa: 25000000,
+        notes: "Budget annuel de recette",
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(companyBudgetUpdate.response.status, 200)
+  assert.equal(companyBudgetUpdate.body.data.amountFcfa, "25000000")
+  const accountantCompanyBudget = await request(
+    baseUrl,
+    `/api/company-operating-budget?year=${fiscalYear}`,
+    {},
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(accountantCompanyBudget.response.status, 200)
+  assert.equal(accountantCompanyBudget.body.data.amountFcfa, "25000000")
+  const conductorCompanyBudget = await request(
+    baseUrl,
+    "/api/company-operating-budget",
+    {},
+    roleSessions.get("CONDUCTEUR").cookie,
+  )
+  assert.equal(conductorCompanyBudget.response.status, 403)
+  const accountantCannotUpdateCompanyBudget = await request(
+    baseUrl,
+    "/api/company-operating-budget",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fiscalYear, amountFcfa: 1, notes: "" }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(accountantCannotUpdateCompanyBudget.response.status, 403)
+
+  const supplierInvoiceReference = `SUP-${randomUUID().slice(0, 8)}`
+  const supplierInvoice = await request(
+    baseUrl,
+    "/api/supplier-invoices",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteId: roleSiteId,
+        supplierName: "Fournisseur de recette",
+        invoiceReference: supplierInvoiceReference,
+        category: "Matériaux",
+        description: "Facture de test",
+        amountFcfa: 4500,
+      }),
+    },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(supplierInvoice.response.status, 201)
+  const supplierInvoiceId = supplierInvoice.body.data.id
+  assert.equal(supplierInvoice.body.data.status, "En préparation")
+  const submittedSupplierInvoice = await request(
+    baseUrl,
+    `/api/supplier-invoices/${supplierInvoiceId}/submit`,
+    { method: "PATCH" },
+    roleSessions.get("ADMIN_ENTERPRISE").cookie,
+  )
+  assert.equal(submittedSupplierInvoice.response.status, 200)
+  const approvedSupplierInvoice = await request(
+    baseUrl,
+    `/api/supplier-invoices/${supplierInvoiceId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Approuvée" }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(approvedSupplierInvoice.response.status, 200)
+  const supplierPaymentWithoutReference = await request(
+    baseUrl,
+    `/api/supplier-invoices/${supplierInvoiceId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Payée" }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(supplierPaymentWithoutReference.response.status, 400)
+  const paidSupplierInvoice = await request(
+    baseUrl,
+    `/api/supplier-invoices/${supplierInvoiceId}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "Payée",
+        paymentReference: "FOURN-RECETTE-001",
+      }),
+    },
+    roleSessions.get("COMPTABLE").cookie,
+  )
+  assert.equal(paidSupplierInvoice.response.status, 200)
+  const supplierExpense = await temporaryClient.query(
+    `SELECT entry_type, status, amount_fcfa::text
+     FROM finance_entries
+     WHERE description LIKE $1`,
+    [`%${supplierInvoiceReference}%`],
+  )
+  assert.equal(supplierExpense.rowCount, 1)
+  assert.equal(supplierExpense.rows[0].entry_type, "depense")
+  assert.equal(supplierExpense.rows[0].status, "réalisé")
+  assert.equal(supplierExpense.rows[0].amount_fcfa, "4500")
   console.info("OK permissions rôles : responsabilités chantier/rapport distinctes et lecture/écriture financière séparées.")
 
+  const actorActivityTitle = "Action récente propre au compte entreprise"
+  await temporaryClient.query(
+    `INSERT INTO tasks (tenant_id, site_id, title, created_by)
+     VALUES ($1, $2, $3, $4)`,
+    [
+      fixtureTenants[0].id,
+      roleSiteId,
+      actorActivityTitle,
+      sessions[0].user.id,
+    ],
+  )
   const teammateActivityTitle = "Action équipe visible du compte entreprise"
   await temporaryClient.query(
     `INSERT INTO tasks (tenant_id, site_id, title, created_by)
@@ -1039,9 +1515,9 @@ try {
   assert.equal(activity.response.status, 200)
   assert.ok(
     activity.body.data.some(
-      (entry) => entry.title === fixtureTenants[0].taskTitle,
+      (entry) => entry.title === actorActivityTitle,
     ),
-    "L’activité récente doit inclure les données réelles de l’acteur.",
+    "L’activité récente doit inclure une opération récente du compte connecté.",
   )
   assert.ok(
     activity.body.data.some((entry) => entry.title === teammateActivityTitle),
@@ -1851,17 +2327,31 @@ try {
       body: JSON.stringify({
         name: site.name,
         location: site.location,
+        description: site.description,
+        city: site.city,
+        province: site.province,
+        clientName: site.clientName,
+        workType: site.workType,
+        contractReference: site.contractReference,
         status: "Archivé",
-        progress: site.progress,
-        budgetFcfa: Number(site.budgetFcfa ?? 0),
+        costBudgetFcfa: 1250000,
+        contractAmountFcfa: 2400000,
         startDate: site.startDate,
         endDate: site.endDate,
+        plannedDurationDays: site.plannedDurationDays,
       }),
     },
     sessions[0].cookie,
   )
   assert.equal(archivedSite.response.status, 200)
   assert.equal(archivedSite.body.data.status, "Archivé")
+  assert.equal(archivedSite.body.data.costBudgetFcfa, "1250000")
+  assert.equal(archivedSite.body.data.contractAmountFcfa, "2400000")
+  const legacySiteBudget = await temporaryClient.query(
+    "SELECT budget_fcfa::text FROM sites WHERE id = $1",
+    [site.id],
+  )
+  assert.equal(legacySiteBudget.rows[0].budget_fcfa, "1250000")
   const preservedTask = await temporaryClient.query(
     "SELECT id FROM tasks WHERE site_id = $1",
     [site.id],

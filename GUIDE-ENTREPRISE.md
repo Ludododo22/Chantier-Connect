@@ -32,13 +32,13 @@ d’une autre entreprise est refusée.
 
 | Rôle | Mission principale | Espaces disponibles | Peut agir sur | Ne peut pas |
 |---|---|---|---|---|
-| **Administrateur entreprise** | Organiser l’entreprise et arbitrer les opérations | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Budget, Dossiers de paiement, Trésorerie, Paramètres, Profil | Modifier les paramètres, gérer les membres et chantiers, créer/affecter des tâches, consulter les opérations financières, créer et valider les rapports | Saisir ou clôturer une opération de trésorerie/dossier de paiement : ces écritures sont réservées au Comptable |
-| **Conducteur de travaux** | Coordonner un chantier et contrôler les comptes rendus | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Profil | Gérer les tâches du chantier affecté, consulter l’équipe et les preuves, valider les rapports du chantier | Créer des rapports, gérer les comptes, changer les affectations, créer des chantiers, gérer la finance ou pointer |
-| **Chef de chantier** | Diriger l’exécution quotidienne sur le terrain | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Pointage, Profil | Gérer les tâches du chantier, produire les rapports journaliers, ajouter des photos, pointer ses heures, consulter l’équipe du chantier | Valider/publier ses rapports, gérer les comptes ou les affectations, créer des chantiers, accéder à la finance |
-| **Compagnon** | Réaliser et rendre compte de ses propres tâches | Tableau de bord, Mes tâches, Photos, Pointage, Profil | Consulter uniquement les tâches qui lui sont assignées, les faire passer à « En cours », « Bloquée » ou « Terminée », ajouter des photos, pointer ses heures | Consulter les tâches d’un autre membre, gérer l’équipe, rédiger/valider les rapports ou accéder à la finance |
-| **Sous-traitant** | Exécuter les tâches confiées dans un périmètre externe | Tableau de bord, Mes tâches, Photos, Profil | Consulter et mettre à jour ses tâches assignées, ajouter des photos sur son chantier affecté | Pointer les heures, consulter les données financières, gérer l’équipe, les chantiers ou les rapports internes |
-| **Comptable** | Tenir la trésorerie et les dossiers de paiement | Tableau de bord, Dossiers de paiement, Trésorerie, Rapports, Profil | Consulter les finances de l’entreprise et les rapports validés; enregistrer et réaliser les opérations financières; créer et faire évoluer les dossiers de paiement | Modifier les paramètres de l’entreprise, gérer l’équipe, les chantiers ou les tâches; consulter les rapports non validés |
-| **Maître d’ouvrage** | Suivre le chantier et les livrables publiés | Tableau de bord, Chantiers, Photos, Rapports, Profil | Consulter l’avancement, les photos et les rapports validés du chantier affecté | Modifier quoi que ce soit, voir les rapports en attente ou accéder aux tâches internes, à l’équipe complète et aux finances |
+| **Administrateur entreprise** | Organiser l’entreprise et arbitrer les opérations | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Budget, Dossiers de paiement, Trésorerie, Paramètres, Profil | Modifier les paramètres, gérer les membres et chantiers, créer/affecter des tâches, consulter les finances, préparer des engagements, prévisions et dossiers, créer et valider les rapports | Confirmer les encaissements/dépenses réalisés ou faire avancer le statut de paiement : ces validations sont réservées au Comptable |
+| **Conducteur de travaux** | Coordonner un chantier et contrôler les comptes rendus | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Profil | Gérer les tâches du chantier affecté, repérer les retards et blocages, consulter l’équipe et les preuves, valider les rapports du chantier | Créer des rapports, gérer les comptes, changer les affectations, créer des chantiers, gérer la finance ou pointer |
+| **Chef de chantier** | Diriger l’exécution quotidienne sur le terrain | Tableau de bord, Chantiers, Mes tâches, Photos, Rapports, Équipe, Pointage, Profil | Suivre les retards et blocages, gérer les tâches du chantier, produire les rapports journaliers, ajouter des photos, pointer ses heures, consulter l’équipe du chantier | Valider/publier ses rapports, gérer les comptes ou les affectations, créer des chantiers, accéder à la finance |
+| **Compagnon** | Réaliser et rendre compte de ses propres tâches | Tableau de bord, Mes tâches, Photos, Pointage, Profil | Consulter uniquement les tâches qui lui sont assignées, repérer les retards et trier par échéance, les faire passer à « En cours », « Bloquée » ou « Terminée », ajouter des photos, pointer ses heures | Consulter les tâches d’un autre membre, gérer l’équipe, rédiger/valider les rapports ou accéder à la finance |
+| **Sous-traitant** | Exécuter les tâches confiées dans un périmètre externe | Tableau de bord, Mes tâches, Photos, Profil | Suivre ses missions et échéances, mettre à jour uniquement ses tâches assignées, transmettre des preuves photo sur son chantier affecté | Pointer les heures, consulter les données financières ou l’équipe complète, gérer les chantiers ou les rapports internes |
+| **Comptable** | Tenir la trésorerie, les dossiers clients et les factures fournisseurs | Tableau de bord, Dossiers de paiement, Factures fournisseurs, Trésorerie, Rapports, Profil | Consulter les finances de l’entreprise et les rapports validés; enregistrer les réalisations, suivre les créances clients, contrôler les factures fournisseurs et consigner leur paiement | Modifier les paramètres de l’entreprise, gérer l’équipe, les chantiers ou les tâches; consulter les rapports non validés |
+| **Maître d’ouvrage** | Suivre le chantier et les livrables publiés | Tableau de bord, Chantiers, Photos, Rapports, Profil | Consulter l’avancement, l’échéance prévisionnelle, les photos et les rapports validés du chantier affecté | Modifier quoi que ce soit, voir les rapports en attente ou accéder aux tâches internes, à l’équipe complète et aux finances |
 
 L’espace **Éditeur** est le back-office de la plateforme, distinct des rôles
 client. Il gère les comptes, les licences et l’assistance; il n’est pas un rôle
@@ -61,15 +61,37 @@ client. Il gère les comptes, les licences et l’assistance; il n’est pas un 
 
 ### Finance
 
-- Le **Comptable** est le seul rôle client qui peut créer ou enregistrer une
-  réalisation financière et faire progresser les dossiers de paiement.
-- L’**Administrateur entreprise** conserve une vue de contrôle en lecture seule
-  dans Budget, Trésorerie et Dossiers de paiement. Il ne peut pas modifier les
-  écritures ni marquer une opération comme réalisée.
+- L’**Administrateur entreprise** prépare les engagements budgétaires, les
+  prévisions de trésorerie et les dossiers de paiement; il peut corriger ces
+  éléments tant qu’ils restent prévus/en préparation. Il ne peut ni les marquer
+  comme réalisés ni modifier l’avancement d’un dossier transmis.
+- Le **Comptable** contrôle ces prévisions puis est le seul rôle client qui peut
+  enregistrer une réalisation financière et faire progresser le statut des
+  dossiers de paiement. Les indicateurs distinguent ainsi le prévu du réalisé.
+- Le budget annuel de fonctionnement, fixé par l’Administrateur après arbitrage
+  de direction, couvre l’enveloppe des frais généraux. Il est distinct des deux
+  montants du chantier : l’**enveloppe de coûts prévue** pour réaliser les
+  travaux et le **montant contractuel facturé au client**.
+- L’espace **Budget** compare uniquement l’enveloppe de coûts de chaque chantier
+  aux engagements/prévisions de dépenses qui lui sont affectés. Le montant
+  contractuel client est une recette attendue; il ne sert pas de référence pour
+  mesurer les coûts ou les dépassements. Les **situations clients** sont des créances à
+  encaisser; lorsque le Comptable confirme le paiement avec une référence,
+  l’encaissement est inscrit à la trésorerie. Les **factures fournisseurs**
+  suivent un circuit distinct et ne deviennent une dépense réalisée qu’après
+  paiement confirmé par le Comptable.
+- La progression d’un chantier est calculée automatiquement comme la part des
+  tâches marquées « Terminée » parmi ses tâches définies. Elle n’est pas saisie
+  manuellement; avec zéro tâche, elle reste à 0 %. Le calcul au nombre de tâches
+  est un indicateur de suivi, pas une mesure pondérée de l’avancement physique
+  des travaux.
 - Les autres rôles n’ont pas accès aux espaces financiers.
 - Les **Rapports** visibles par le Comptable sont limités aux rapports validés.
   Aucun paiement Mobile Money automatique ou rappel client automatique n’est
   activé par cette version.
+- Les factures fournisseurs doivent être rattachées à un chantier. Le dépôt
+  numérique des justificatifs et la gestion des frais généraux sans chantier ne
+  sont pas encore couverts par ce module.
 
 Cette séparation est appliquée côté API et ne dépend pas uniquement du masquage
 des boutons dans l’interface.
@@ -102,8 +124,9 @@ des boutons dans l’interface.
    journalier.
 5. **Conducteur** contrôle et valide le rapport; le **Maître d’ouvrage** peut
    alors consulter la version publiée.
-6. **Comptable** enregistre les encaissements/dépenses et suit les dossiers de
-   paiement; l’administrateur consulte les indicateurs sans altérer les écritures.
+6. **Administrateur** prépare budgets engagés, prévisions et dossiers; le
+   **Comptable** contrôle, fait évoluer les dossiers et confirme les mouvements
+   réellement effectués.
 
 ## 6. Limites connues à ne pas confondre avec une fonction activée
 

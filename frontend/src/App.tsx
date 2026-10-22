@@ -6,6 +6,7 @@ import {
   type AttendanceRecord,
   type FinanceEntry,
   type FinanceSummary,
+  type CompanyOperatingBudget,
   type InvoicePaymentMethod,
   type ManagedRole,
   type PaymentDossier,
@@ -23,6 +24,8 @@ import {
   type SitePhoto,
   type Site,
   type SiteDetail,
+  type SupplierInvoice,
+  type SupplierInvoiceStatus,
   type SubscriptionPlan,
   type SupportTicket,
   type SupportTicketStatus,
@@ -34,7 +37,7 @@ import {
 
 type IconName = "alert" | "arrow" | "building" | "calendar" | "camera" | "chart" | "check" | "chevron" | "clipboard" | "cloud" | "hardhat" | "home" | "lock" | "logout" | "menu" | "moon" | "pin" | "plus" | "search" | "settings" | "task" | "team" | "user" | "wallet"
 
-type ActionKind = "site" | "task" | "photo" | "report" | "member" | "payment" | "budget" | "treasury" | "tenant" | "plan" | "ticket" | "invoice"
+type ActionKind = "site" | "task" | "photo" | "report" | "member" | "payment" | "paymentReceipt" | "budget" | "treasury" | "supplierInvoice" | "supplierInvoicePayment" | "tenant" | "plan" | "ticket" | "invoice"
 
 type PendingAction = {
   kind: ActionKind
@@ -1013,6 +1016,7 @@ const sectionIcons: Record<string, IconName> = {
   Trésorerie: "wallet",
   Budget: "chart",
   "Dossiers de paiement": "wallet",
+  "Factures fournisseurs": "wallet",
   Pointage: "calendar",
   Entreprises: "building",
   Utilisateurs: "team",
@@ -1043,9 +1047,16 @@ const auditActionLabels: Record<string, string> = {
   ATTENDANCE_CLOCKED_IN: "Arrivée enregistrée",
   ATTENDANCE_CLOCKED_OUT: "Départ enregistré",
   FINANCE_ENTRY_CREATED: "Écriture financière créée",
+  FINANCE_ENTRY_UPDATED: "Prévision financière modifiée",
   FINANCE_ENTRY_REALIZED: "Écriture financière réalisée",
   PAYMENT_DOSSIER_CREATED: "Dossier de paiement créé",
+  PAYMENT_DOSSIER_UPDATED: "Dossier de paiement modifié",
   PAYMENT_DOSSIER_STATUS_CHANGED: "Statut du dossier de paiement modifié",
+  COMPANY_OPERATING_BUDGET_UPDATED: "Budget annuel de l’entreprise modifié",
+  SUPPLIER_INVOICE_CREATED: "Facture fournisseur créée",
+  SUPPLIER_INVOICE_UPDATED: "Facture fournisseur modifiée",
+  SUPPLIER_INVOICE_SUBMITTED: "Facture fournisseur soumise au contrôle",
+  SUPPLIER_INVOICE_STATUS_CHANGED: "Statut de facture fournisseur modifié",
 }
 
 const actionFields: Record<ActionKind, {
@@ -1056,15 +1067,23 @@ const actionFields: Record<ActionKind, {
   min?: number
   max?: number
   minLength?: number
+  maxLength?: number
 }[]> = {
   site: [
     { label: "Nom du chantier", placeholder: "Ex. Immeuble Batterie IV" },
-    { label: "Localisation", placeholder: "Quartier, ville" },
+    { label: "Description du projet", placeholder: "Nature et périmètre des travaux", required: false },
+    { label: "Adresse / quartier", placeholder: "Quartier, rue, repère ou coordonnées" },
+    { label: "Ville", placeholder: "Ex. Libreville", required: false },
+    { label: "Province", placeholder: "Sélectionner une province", required: false },
+    { label: "Maître d’ouvrage / client", placeholder: "Nom du client ou donneur d’ordre", required: false },
+    { label: "Nature des travaux", placeholder: "Ex. construction, réhabilitation, VRD…", required: false },
+    { label: "Référence du marché", placeholder: "N° de contrat ou de marché", required: false },
     { label: "Statut", placeholder: "En cours", required: false },
-    { label: "Progression (%)", placeholder: "0", type: "number", required: false, min: 0, max: 100 },
-    { label: "Budget FCFA", placeholder: "0", type: "number", required: false, min: 0 },
+    { label: "Enveloppe de coûts prévue (FCFA)", placeholder: "0", type: "number", required: false, min: 0 },
+    { label: "Montant contractuel facturé au client (FCFA)", placeholder: "À renseigner si connu", type: "number", required: false, min: 0 },
     { label: "Date de début", placeholder: "", type: "date", required: false },
-    { label: "Date de fin", placeholder: "", type: "date", required: false },
+    { label: "Délai prévu (jours)", placeholder: "Ex. 180", type: "number", required: false, min: 1, max: 3650 },
+    { label: "Échéance prévisionnelle", placeholder: "", type: "date", required: false },
   ],
   task: [
     { label: "Tâche", placeholder: "Travail à réaliser" },
@@ -1108,6 +1127,21 @@ const actionFields: Record<ActionKind, {
     { label: "Objet du dossier", placeholder: "Ex. Situation n°4" },
     { label: "Montant FCFA", placeholder: "0", type: "number" },
     { label: "Date limite", placeholder: "", type: "date", required: false },
+  ],
+  supplierInvoice: [
+    { label: "Fournisseur", placeholder: "Raison sociale du fournisseur" },
+    { label: "Référence de facture", placeholder: "N° de facture" },
+    { label: "Poste de dépense", placeholder: "Ex. Matériaux, sous-traitance, transport" },
+    { label: "Description", placeholder: "Détail de la fourniture ou prestation", required: false },
+    { label: "Montant FCFA", placeholder: "0", type: "number", min: 1 },
+    { label: "Date de facture", placeholder: "", type: "date", required: false },
+    { label: "Date limite de paiement", placeholder: "", type: "date", required: false },
+  ],
+  supplierInvoicePayment: [
+    { label: "Référence du paiement", placeholder: "N° transaction ou référence bancaire", minLength: 2, maxLength: 120 },
+  ],
+  paymentReceipt: [
+    { label: "Référence d’encaissement", placeholder: "N° de transaction ou référence bancaire", minLength: 2, maxLength: 120 },
   ],
   budget: [
     { label: "Poste budgétaire", placeholder: "Ex. Gros œuvre" },
@@ -1188,12 +1222,15 @@ const siteScopedRoles: ManagedRole[] = [
 ]
 
 const actionGuideByKind: Record<ActionKind, string> = {
-  site: "Mode administration : créez un chantier avec son nom et sa localisation pour organiser le terrain.",
+  site: "Renseignez les informations du marché, la localisation et le calendrier pour suivre les travaux et leurs échéances.",
   task: "Coordonnez votre chantier : précisez la priorité, les consignes, l’échéance et le membre responsable.",
   photo: "Mode terrain : ajoutez une preuve visuelle avec une légende et, si besoin, votre position GPS.",
   report: "Mode terrain : résumez les travaux, l’effectif présent et la date pour valider l’avancement du chantier.",
   member: "Mode administration : créez le compte, définissez le rôle et l’affectation chantier pour sécuriser l’accès.",
-  payment: "Mode finance : donnez un objet, un montant et une échéance pour structurer le dossier de paiement.",
+  payment: "Préparez une situation de travaux à transmettre au client et suivez les montants à encaisser.",
+  supplierInvoice: "Enregistrez une facture fournisseur liée à un chantier. Elle reste en préparation jusqu’à sa soumission au Comptable.",
+  supplierInvoicePayment: "Saisissez la référence de la pièce de paiement afin de tracer le règlement fournisseur.",
+  paymentReceipt: "Confirmez l’encaissement client avec sa référence de transaction. Cette opération sera ajoutée à la trésorerie.",
   budget: "Mode finance : enregistrez un engagement budgétaire avec un poste, une description et un montant clairement identifiés.",
   treasury: "Mode finance : enregistrez un encaissement ou une dépense avec son montant et son échéance.",
   tenant: "Mode administration : créez l’entreprise cliente, son administrateur et le mot de passe provisoire associé.",
@@ -1204,7 +1241,7 @@ const actionGuideByKind: Record<ActionKind, string> = {
 
 function getAllowedActionKinds(user: AuthUser): ActionKind[] {
   const terrainKinds: ActionKind[] = ["site", "task", "photo", "report"]
-  const financeKinds: ActionKind[] = ["payment", "budget", "treasury"]
+  const financeKinds: ActionKind[] = ["payment", "paymentReceipt", "budget", "treasury", "supplierInvoice", "supplierInvoicePayment"]
   const adminKinds: ActionKind[] = [
     "member",
     "tenant",
@@ -1222,7 +1259,8 @@ function getAllowedActionKinds(user: AuthUser): ActionKind[] {
   })
 
   const allowedFinance = financeKinds.filter((kind) =>
-    user.capabilities.includes("manage_finance"),
+    user.capabilities.includes("manage_finance") ||
+    user.capabilities.includes("manage_finance_planning"),
   )
 
   const allowedAdmin = adminKinds.filter((kind) => {
@@ -1293,6 +1331,7 @@ function ActionDialog({
       action?.kind !== "photo" &&
       action?.kind !== "budget" &&
       action?.kind !== "treasury" &&
+      action?.kind !== "supplierInvoice" &&
       action?.kind !== "payment"
     )
       return
@@ -1314,7 +1353,16 @@ function ActionDialog({
             setTaskAssigneeId("")
           })
         : api.sites().then((result) => {
-            if (activeRequest) setTaskSites(result)
+            if (!activeRequest) return
+            setTaskSites(result)
+            if (action.kind === "report") {
+              setTaskSiteId(
+                user.assignedSiteId &&
+                  result.some((site) => site.id === user.assignedSiteId)
+                  ? user.assignedSiteId
+                  : "",
+              )
+            }
           })
     loadSites
       .catch((error: unknown) => {
@@ -1409,7 +1457,7 @@ function ActionDialog({
   )
   const selectableTaskSites = user.capabilities.includes("read_company")
     ? taskSites
-    : taskSites.filter((site) => site.name === user.assignedSite)
+    : taskSites.filter((site) => site.id === user.assignedSiteId)
   const assignableTaskMembers = taskMembers.filter(
     (member) =>
       member.active &&
@@ -1421,9 +1469,13 @@ function ActionDialog({
     action.kind === "site"
       ? action.id
         ? fields
-        : fields.slice(0, 2)
+        : fields.filter((field) => field.label !== "Statut")
       : action.kind === "member"
       ? fields.slice(0, 2)
+      : action.kind === "payment"
+        ? fields
+        : action.kind === "supplierInvoice" || action.kind === "supplierInvoicePayment" || action.kind === "paymentReceipt"
+          ? fields
       : action.kind === "invoice"
         ? action.id
           ? [fields[4]!]
@@ -1521,7 +1573,7 @@ function ActionDialog({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="action-modal"
+        className={`action-modal${action.kind === "site" ? " action-modal--site" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="action-title"
@@ -1542,7 +1594,19 @@ function ActionDialog({
             <span>{actionHelpText}</span>
           </div>
           {visibleFields.map((field) => (
-            <label key={field.label}>
+            <label
+              key={field.label}
+              className={
+                action.kind === "site" &&
+                [
+                  "Nom du chantier",
+                  "Description du projet",
+                  "Adresse / quartier",
+                ].includes(field.label)
+                  ? "full-field"
+                  : undefined
+              }
+            >
               <span>{field.label}</span>
               {action.kind === "site" && field.label === "Statut" ? (
                 <select name={field.label} defaultValue={action.initialValues?.[field.label] ?? "En cours"}>
@@ -1550,6 +1614,35 @@ function ActionDialog({
                     <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
+              ) : action.kind === "site" && field.label === "Province" ? (
+                <select
+                  name={field.label}
+                  defaultValue={action.initialValues?.[field.label] ?? ""}
+                >
+                  <option value="">Sélectionner une province</option>
+                  {[
+                    "Estuaire",
+                    "Haut-Ogooué",
+                    "Moyen-Ogooué",
+                    "Ngounié",
+                    "Nyanga",
+                    "Ogooué-Ivindo",
+                    "Ogooué-Lolo",
+                    "Ogooué-Maritime",
+                    "Woleu-Ntem",
+                  ].map((province) => (
+                    <option key={province} value={province}>{province}</option>
+                  ))}
+                </select>
+              ) : action.kind === "site" && field.label === "Description du projet" ? (
+                <textarea
+                  name={field.label}
+                  placeholder={field.placeholder}
+                  required={false}
+                  maxLength={4000}
+                  rows={4}
+                  defaultValue={action.initialValues?.[field.label]}
+                />
               ) : action.kind === "tenant" &&
               field.label === "Plan d’abonnement" ? (
                 <select
@@ -1589,6 +1682,7 @@ function ActionDialog({
                   min={field.min}
                   max={field.max}
                   minLength={field.minLength}
+                  maxLength={field.maxLength}
                   step={field.type === "number" ? 1 : undefined}
                   defaultValue={action.initialValues?.[field.label]}
                 />
@@ -1753,8 +1847,22 @@ function ActionDialog({
               <span>Chantier</span>
               <select
                 name="siteId"
-                defaultValue=""
+                value={
+                  action.kind === "report"
+                    ? taskSiteId
+                    : undefined
+                }
+                defaultValue={
+                  action.kind === "payment"
+                    ? action.initialValues?.siteId ?? ""
+                    : undefined
+                }
                 required
+                onChange={
+                  action.kind === "report"
+                    ? (event) => setTaskSiteId(event.target.value)
+                    : undefined
+                }
                 disabled={taskSitesLoading || selectableTaskSites.length === 0}
               >
                 <option value="" disabled>
@@ -1771,22 +1879,26 @@ function ActionDialog({
             </label>
           ) : action.kind === "photo" ||
             action.kind === "budget" ||
-            action.kind === "treasury" ? (
+            action.kind === "treasury" ||
+            action.kind === "supplierInvoice" ? (
             <>
               {action.kind === "treasury" && (
                 <label>
                   <span>Type d’opération</span>
-                  <select name="entryType" defaultValue="encaissement">
+                  <select
+                    name="entryType"
+                    defaultValue={action.initialValues?.entryType ?? "encaissement"}
+                  >
                     <option value="encaissement">Encaissement</option>
                     <option value="depense">Dépense à enregistrer</option>
                   </select>
                 </label>
               )}
               <label>
-                <span>Chantier</span>
+                <span>Chantier lié à la facture</span>
                 <select
                   name="siteId"
-                  defaultValue=""
+                  defaultValue={action.initialValues?.siteId ?? ""}
                   required
                   disabled={
                     taskSitesLoading || selectableTaskSites.length === 0
@@ -1860,6 +1972,7 @@ function ActionDialog({
               action.kind === "budget" ||
               action.kind === "treasury" ||
               action.kind === "payment" ||
+              action.kind === "supplierInvoice" ||
               action.kind === "ticket" ||
               action.kind === "invoice" ||
               action.kind === "tenant") && (
@@ -1901,7 +2014,8 @@ function ActionDialog({
                   action.kind === "photo" ||
                   action.kind === "budget" ||
                   action.kind === "treasury" ||
-                  action.kind === "payment") &&
+                  action.kind === "payment" ||
+                  action.kind === "supplierInvoice") &&
                   (taskSitesLoading || selectableTaskSites.length === 0)) ||
                 ((action.kind === "ticket" ||
                   (action.kind === "invoice" && !action.id)) &&
@@ -2525,6 +2639,7 @@ function ModuleView({
   onDataChange: () => void
 }) {
   const [taskFilter, setTaskFilter] = useState("Toutes")
+  const [taskDueAscending, setTaskDueAscending] = useState(true)
   const [saved, setSaved] = useState(false)
   const [profileName, setProfileName] = useState(user.fullName)
   const [profileEmail, setProfileEmail] = useState(user.email)
@@ -2556,6 +2671,13 @@ function ModuleView({
   const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(
     null,
   )
+  const [companyOperatingBudget, setCompanyOperatingBudget] =
+    useState<CompanyOperatingBudget | null>(null)
+  const [companyBudgetYear, setCompanyBudgetYear] = useState(new Date().getFullYear())
+  const [companyBudgetAmount, setCompanyBudgetAmount] = useState("")
+  const [companyBudgetNotes, setCompanyBudgetNotes] = useState("")
+  const [companyBudgetSaving, setCompanyBudgetSaving] = useState(false)
+  const [supplierInvoices, setSupplierInvoices] = useState<SupplierInvoice[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [paymentDossiers, setPaymentDossiers] = useState<PaymentDossier[]>([])
   const [platformTenants, setPlatformTenants] = useState<PlatformTenant[]>([])
@@ -2653,17 +2775,43 @@ function ModuleView({
                 ? api.attendance().then((result) => {
                     if (activeRequest) setAttendance(result)
                   })
-                : active === "Budget" || active === "Trésorerie"
-                  ? api.finance().then((result) => {
+                : active === "Budget"
+                  ? Promise.all([
+                      api.finance(),
+                      api.companyOperatingBudget(),
+                      api.sites(),
+                    ]).then(([finance, budget, budgetSites]) => {
                       if (activeRequest) {
-                        setFinanceEntries(result.data)
-                        setFinanceSummary(result.summary)
+                        setFinanceEntries(finance.data)
+                        setFinanceSummary(finance.summary)
+                        setSites(budgetSites)
+                        setCompanyOperatingBudget(budget)
+                        setCompanyBudgetYear(budget.fiscalYear)
+                        setCompanyBudgetAmount(budget.amountFcfa ?? "")
+                        setCompanyBudgetNotes(budget.notes)
                       }
                     })
+                  : active === "Trésorerie"
+                    ? api.finance().then((result) => {
+                        if (activeRequest) {
+                          setFinanceEntries(result.data)
+                          setFinanceSummary(result.summary)
+                        }
+                      })
                   : active === "Dossiers de paiement"
                     ? api.paymentDossiers().then((result) => {
                         if (activeRequest) setPaymentDossiers(result.data)
                       })
+                    : active === "Factures fournisseurs"
+                      ? Promise.all([
+                          api.supplierInvoices(),
+                          api.sites(),
+                        ]).then(([invoices, invoiceSites]) => {
+                          if (activeRequest) {
+                            setSupplierInvoices(invoices.data)
+                            setSites(invoiceSites)
+                          }
+                        })
                     : active === "Entreprises"
                       ? Promise.all([
                           api.platformTenants(),
@@ -2833,21 +2981,77 @@ function ModuleView({
   async function updatePaymentStatus(
     dossier: PaymentDossier,
     status: PaymentDossierStatus,
+    paymentReference?: string,
   ) {
     try {
-      const updated = await api.updatePaymentDossierStatus(dossier.id, status)
+      const updated = await api.updatePaymentDossierStatus(dossier.id, status, paymentReference)
       setPaymentDossiers((current) =>
         current.map((item) =>
           item.id === dossier.id ? { ...item, ...updated } : item,
         ),
       )
       notify(`Dossier ${dossier.reference} mis à jour.`)
+      if (status === "Payé") onDataChange()
     } catch (error) {
       notify(
         error instanceof Error
           ? error.message
           : "Le dossier n’a pas pu être mis à jour.",
       )
+    }
+  }
+
+  async function saveCompanyBudget(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!can("manage_company_budget") || companyBudgetSaving) return
+    const amount = Number(companyBudgetAmount)
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      setDataError("Le budget annuel doit être un montant entier positif ou nul en FCFA.")
+      return
+    }
+    setCompanyBudgetSaving(true)
+    setDataError("")
+    try {
+      const savedBudget = await api.saveCompanyOperatingBudget({
+        fiscalYear: companyBudgetYear,
+        amountFcfa: amount,
+        notes: companyBudgetNotes,
+      })
+      setCompanyOperatingBudget(savedBudget)
+      notify(`Budget de fonctionnement ${savedBudget.fiscalYear} enregistré.`)
+    } catch (error) {
+      setDataError(
+        error instanceof Error ? error.message : "Le budget de l’entreprise n’a pas pu être enregistré.",
+      )
+    } finally {
+      setCompanyBudgetSaving(false)
+    }
+  }
+
+  async function updateSupplierInvoiceStatus(
+    invoice: SupplierInvoice,
+    status: Extract<SupplierInvoiceStatus, "Approuvée" | "Refusée">,
+  ) {
+    try {
+      const updated = await api.updateSupplierInvoiceStatus(invoice.id, status)
+      setSupplierInvoices((current) =>
+        current.map((item) => item.id === invoice.id ? { ...item, ...updated } : item),
+      )
+      notify(`Facture ${invoice.invoiceReference} ${status.toLowerCase()}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "La facture n’a pas pu être traitée.")
+    }
+  }
+
+  async function submitSupplierInvoice(invoice: SupplierInvoice) {
+    try {
+      const updated = await api.submitSupplierInvoice(invoice.id)
+      setSupplierInvoices((current) =>
+        current.map((item) => item.id === invoice.id ? { ...item, ...updated } : item),
+      )
+      notify(`Facture ${invoice.invoiceReference} soumise au Comptable.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "La facture n’a pas pu être soumise.")
     }
   }
 
@@ -3357,7 +3561,7 @@ function ModuleView({
     const visibleSites = sites.filter(
       (site) =>
         (siteFilter === "Tous" || site.status === siteFilter) &&
-        `${site.name} ${site.location ?? ""}`
+        `${site.name} ${site.location ?? ""} ${site.city ?? ""} ${site.province ?? ""} ${site.clientName ?? ""}`
           .toLowerCase()
           .includes(siteSearch.toLowerCase()),
     )
@@ -3369,10 +3573,44 @@ function ModuleView({
             onClose={() => setSelectedSite(null)}
           >
             <dl className="detail-list">
+              {selectedSite.description && (
+                <div className="detail-list__wide">
+                  <dt>Description du projet</dt>
+                  <dd>{selectedSite.description}</dd>
+                </div>
+              )}
               <div>
-                <dt>Localisation</dt>
-                <dd>{selectedSite.location ?? "Non communiquée"}</dd>
+                <dt>Adresse / quartier</dt>
+                <dd>{selectedSite.location || "Non communiquée"}</dd>
               </div>
+              {(selectedSite.city || selectedSite.province) && (
+                <div>
+                  <dt>Ville / province</dt>
+                  <dd>
+                    {[selectedSite.city, selectedSite.province]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </dd>
+                </div>
+              )}
+              {selectedSite.clientName && (
+                <div>
+                  <dt>Maître d’ouvrage / client</dt>
+                  <dd>{selectedSite.clientName}</dd>
+                </div>
+              )}
+              {selectedSite.workType && (
+                <div>
+                  <dt>Nature des travaux</dt>
+                  <dd>{selectedSite.workType}</dd>
+                </div>
+              )}
+              {selectedSite.contractReference && (
+                <div>
+                  <dt>Référence du marché</dt>
+                  <dd>{selectedSite.contractReference}</dd>
+                </div>
+              )}
               <div>
                 <dt>Statut</dt>
                 <dd>{selectedSite.status ?? "Non communiqué"}</dd>
@@ -3385,10 +3623,17 @@ function ModuleView({
                     : `${selectedSite.progress}%`}
                 </dd>
               </div>
-              {can("manage_finance") && selectedSite.budgetFcfa !== null && (
+              {can("read_finance") && selectedSite.costBudgetFcfa !== null && (
                 <div>
-                  <dt>Budget contractuel</dt>
-                  <dd>{formatFcfa(Number(selectedSite.budgetFcfa))}</dd>
+                  <dt>Enveloppe de coûts prévue</dt>
+                  <dd>{formatFcfa(Number(selectedSite.costBudgetFcfa))}</dd>
+                </div>
+              )}
+              {can("read_finance") &&
+                selectedSite.contractAmountFcfa !== null && (
+                <div>
+                  <dt>Montant contractuel facturé au client</dt>
+                  <dd>{formatFcfa(Number(selectedSite.contractAmountFcfa))}</dd>
                 </div>
               )}
               <div>
@@ -3403,7 +3648,15 @@ function ModuleView({
                     : `${selectedSite.teamCount} personne(s) affectée(s)`}</dd>
               </div>
               <div>
-                <dt>Échéance</dt>
+                <dt>Délai prévu</dt>
+                <dd>
+                  {selectedSite.plannedDurationDays
+                    ? `${selectedSite.plannedDurationDays} jours`
+                    : "Non défini"}
+                </dd>
+              </div>
+              <div>
+                <dt>Échéance prévisionnelle</dt>
                 <dd>
                   {selectedSite.endDate
                     ? new Date(
@@ -3423,12 +3676,21 @@ function ModuleView({
                     setSelectedSite(null)
                     openAction("site", `Modifier ${site.name}`, site.id, {
                       "Nom du chantier": site.name,
-                      Localisation: site.location ?? "",
+                      "Description du projet": site.description ?? "",
+                      "Adresse / quartier": site.location ?? "",
+                      Ville: site.city ?? "",
+                      Province: site.province ?? "",
+                      "Maître d’ouvrage / client": site.clientName ?? "",
+                      "Nature des travaux": site.workType ?? "",
+                      "Référence du marché": site.contractReference ?? "",
                       Statut: site.status ?? "En cours",
-                      "Progression (%)": String(site.progress ?? 0),
-                      "Budget FCFA": String(site.budgetFcfa ?? 0),
+                      "Enveloppe de coûts prévue (FCFA)": String(site.costBudgetFcfa ?? 0),
+                      "Montant contractuel facturé au client (FCFA)": site.contractAmountFcfa ?? "",
                       "Date de début": site.startDate ?? "",
-                      "Date de fin": site.endDate ?? "",
+                      "Délai prévu (jours)": site.plannedDurationDays
+                        ? String(site.plannedDurationDays)
+                        : "",
+                      "Échéance prévisionnelle": site.endDate ?? "",
                     })
                   }}
                 >
@@ -3449,7 +3711,7 @@ function ModuleView({
           description={
             can("read_assigned")
               ? "Vous consultez uniquement le chantier auquel votre accès est rattaché."
-              : "Suivez la progression, les équipes et les échéances de vos opérations."
+              : "La progression reflète la part des tâches terminées. Suivez aussi les équipes et échéances de vos opérations."
           }
           action="Nouveau chantier"
           icon="plus"
@@ -3532,10 +3794,12 @@ function ModuleView({
                   <h3>{site.name}</h3>
                   <p>
                     <Icon name="pin" size={14} />{" "}
-                    {site.location ?? "Non communiquée"}
+                    {[site.location, site.city, site.province]
+                      .filter(Boolean)
+                      .join(" · ") || "Non communiquée"}
                   </p>
                   <div className="portfolio-progress">
-                    <span>Progression</span>
+                    <span>Avancement des tâches</span>
                     <strong>{progress}%</strong>
                     <div className="progress">
                       <i style={{ width: `${progress}%` }} />
@@ -3561,10 +3825,27 @@ function ModuleView({
   }
 
   if (active === "Mes tâches") {
-    const visibleTasks =
+    const now = new Date()
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const overdueTasks = tasks.filter(
+      (task) =>
+        task.dueDate !== null &&
+        task.dueDate < todayKey &&
+        task.status !== "Terminée",
+    )
+    const filteredTasks =
       taskFilter === "Toutes"
         ? tasks
-        : tasks.filter((task) => task.status === taskFilter)
+        : taskFilter === "En retard"
+          ? overdueTasks
+          : tasks.filter((task) => task.status === taskFilter)
+    const visibleTasks = [...filteredTasks].sort((first, second) => {
+      const firstDueDate = first.dueDate ?? (taskDueAscending ? "9999-12-31" : "")
+      const secondDueDate = second.dueDate ?? (taskDueAscending ? "9999-12-31" : "")
+      return taskDueAscending
+        ? firstDueDate.localeCompare(secondDueDate)
+        : secondDueDate.localeCompare(firstDueDate)
+    })
     const pendingTaskCount = tasks.filter(
       (task) => task.status === "À faire",
     ).length
@@ -3633,11 +3914,19 @@ function ModuleView({
           </div>
         )}
         <SectionHeader
-          eyebrow="Opérations"
-          title={can("manage_tasks") ? "Tâches du chantier" : "Mes tâches"}
+          eyebrow={user.role === "SOUS_TRAITANT" ? "Mission confiée" : "Opérations"}
+          title={
+            can("manage_tasks")
+              ? "Tâches du chantier"
+              : user.role === "SOUS_TRAITANT"
+                ? "Mes missions"
+                : "Mes tâches"
+          }
           description={
             can("manage_tasks")
               ? "Coordonnez les tâches du chantier affecté, répartissez les responsabilités et suivez les blocages."
+              : user.role === "SOUS_TRAITANT"
+                ? "Consultez uniquement les tâches qui vous sont confiées sur le chantier invité et transmettez vos preuves au responsable."
               : can("read_assigned")
               ? "Seules les tâches qui vous sont assignées sont affichées."
               : "Priorisez votre journée et ne laissez aucun blocage ralentir le chantier."
@@ -3652,7 +3941,9 @@ function ModuleView({
             <span>À faire</span>
             <strong>{pendingTaskCount}</strong>
             <small>
-              {tasks.length} tâche{tasks.length === 1 ? "" : "s"} au total
+              {overdueTasks.length
+                ? `${overdueTasks.length} en retard · ${tasks.length} au total`
+                : `${tasks.length} tâche${tasks.length === 1 ? "" : "s"} au total`}
             </small>
           </div>
           <div>
@@ -3679,7 +3970,7 @@ function ModuleView({
         </div>
         <div className="module-toolbar task-toolbar">
           <div className="filter-pills">
-            {["Toutes", "À faire", "En cours", "Bloquée", "Terminée"].map(
+            {["Toutes", "À faire", "En cours", "Bloquée", "Terminée", "En retard"].map(
               (filter) => (
                 <button
                   className={taskFilter === filter ? "active" : ""}
@@ -3691,8 +3982,13 @@ function ModuleView({
               ),
             )}
           </div>
-          <button className="outline-button">
-            <Icon name="calendar" /> Échéance
+          <button
+            className="outline-button"
+            type="button"
+            aria-pressed={taskDueAscending}
+            onClick={() => setTaskDueAscending((ascending) => !ascending)}
+          >
+            <Icon name="calendar" /> Échéance {taskDueAscending ? "↑" : "↓"}
           </button>
         </div>
         <section className="data-panel">
@@ -3804,10 +4100,14 @@ function ModuleView({
           </div>
         )}
         <SectionHeader
-          eyebrow="Preuve terrain"
-          title="Photos certifiées"
-          description="Photos horodatées et vérifiables par leur empreinte SHA-256."
-          action="Prendre une photo"
+          eyebrow={user.role === "SOUS_TRAITANT" ? "Preuve de mission" : "Preuve terrain"}
+          title={user.role === "SOUS_TRAITANT" ? "Mes preuves photo" : "Photos certifiées"}
+          description={
+            user.role === "SOUS_TRAITANT"
+              ? "Transmettez les photos de vos travaux sur le chantier auquel vous êtes invité."
+              : "Photos horodatées et vérifiables par leur empreinte SHA-256."
+          }
+          action={user.role === "SOUS_TRAITANT" ? "Transmettre une preuve" : "Prendre une photo"}
           icon="camera"
           showAction={can("capture_photos")}
           onAction={() => openAction("photo", "Ajouter une preuve photo")}
@@ -3911,8 +4211,16 @@ function ModuleView({
 
   if (active === "Rapports") {
     const scopedReports = reports
+    const reportFilters =
+      user.role === "MAITRE_OUVRAGE"
+        ? ["Tous", "Validé"]
+        : ["Tous", "À valider", "Validé", "Rejeté"]
+    const activeReportFilter = reportFilters.includes(reportFilter)
+      ? reportFilter
+      : "Tous"
     const visibleReports = scopedReports.filter(
-      (report) => reportFilter === "Tous" || report.status === reportFilter,
+      (report) =>
+        activeReportFilter === "Tous" || report.status === activeReportFilter,
     )
     const pendingReports = scopedReports.filter(
       (report) => report.status === "À valider",
@@ -3939,7 +4247,9 @@ function ModuleView({
           eyebrow="Suivi quotidien"
           title="Rapports journaliers"
           description={
-            can("validate_reports")
+            user.role === "MAITRE_OUVRAGE"
+              ? "Consultez les comptes rendus validés et publiés pour votre chantier."
+              : can("validate_reports")
               ? "Examinez les comptes rendus du chantier affecté et publiez-les après contrôle."
               : can("create_reports")
                 ? "Créez les comptes rendus journaliers de vos chantiers."
@@ -3972,9 +4282,9 @@ function ModuleView({
         )}
         <div className="module-toolbar">
           <div className="filter-pills">
-            {["Tous", "À valider", "Validé", "Rejeté"].map((filter) => (
+            {reportFilters.map((filter) => (
               <button
-                className={reportFilter === filter ? "active" : ""}
+                className={activeReportFilter === filter ? "active" : ""}
                 key={filter}
                 onClick={() => setReportFilter(filter)}
               >
@@ -3992,11 +4302,14 @@ function ModuleView({
             className="outline-button"
             onClick={() =>
               notify(
-                "Les rapports sont classés par date, du plus récent au plus ancien.",
+                user.role === "MAITRE_OUVRAGE"
+                  ? "Seuls les rapports validés sont publiés dans votre espace. Ils sont classés du plus récent au plus ancien."
+                  : "Les rapports sont classés par date, du plus récent au plus ancien.",
               )
             }
           >
-            <Icon name="calendar" /> Toutes les périodes
+            <Icon name="calendar" />{" "}
+            {user.role === "MAITRE_OUVRAGE" ? "Rapports publiés" : "Toutes les périodes"}
           </button>
         </div>
         <section className="data-panel report-table">
@@ -4298,9 +4611,9 @@ function ModuleView({
   }
 
   if (active === "Budget") {
-    const budgetFcfa = Number(financeSummary?.budgetFcfa ?? 0)
+    const costBudgetFcfa = Number(financeSummary?.costBudgetFcfa ?? 0)
     const engagedFcfa = Number(financeSummary?.engagedFcfa ?? 0)
-    const remainingFcfa = budgetFcfa - engagedFcfa
+    const remainingFcfa = costBudgetFcfa - engagedFcfa
     const categoryTotals = new Map<string, number>()
     for (const entry of financeEntries.filter(
       (item) => item.entryType === "engagement",
@@ -4311,6 +4624,16 @@ function ModuleView({
       )
     }
     const budgetRows = [...categoryTotals.entries()]
+    const engagementEntries = financeEntries.filter(
+      (entry) => entry.entryType === "engagement",
+    )
+    const engagementBySite = new Map<string, number>()
+    for (const entry of engagementEntries) {
+      engagementBySite.set(
+        entry.siteId,
+        (engagementBySite.get(entry.siteId) ?? 0) + Number(entry.amountFcfa),
+      )
+    }
     return (
       <div className="module-page">
         {dataError && (
@@ -4321,26 +4644,97 @@ function ModuleView({
         <SectionHeader
           eyebrow="Contrôle des coûts"
           title="Suivi budgétaire"
-          description="Comparez le budget engagé au réalisé et anticipez les dépassements par poste."
+          description="Distinguez l’enveloppe annuelle de fonctionnement, les coûts prévus des chantiers et les montants contractuels facturés aux clients."
           action="Nouvel engagement"
           icon="plus"
-          showAction={can("manage_finance")}
+          showAction={can("manage_finance") || can("manage_finance_planning")}
           onAction={() =>
             openAction("budget", "Ajouter un engagement budgétaire")
           }
         />
+        {can("manage_finance_planning") && !can("manage_finance") && (
+          <div className="finance-role-notice">
+            Vous pouvez préparer les engagements prévisionnels. Le Comptable conserve la validation des dépenses réellement payées.
+          </div>
+        )}
+        <section className="data-panel company-operating-budget">
+          <div className="panel__heading">
+            <div>
+              <h3>Budget de fonctionnement de l’entreprise</h3>
+              <p>
+                Enveloppe annuelle des frais généraux. Elle est indépendante des coûts prévus et des montants facturés pour les chantiers.
+              </p>
+            </div>
+            {companyOperatingBudget?.updatedAt && (
+              <small>
+                Mis à jour le {new Date(companyOperatingBudget.updatedAt).toLocaleDateString("fr-FR")}
+              </small>
+            )}
+          </div>
+          {can("manage_company_budget") ? (
+            <form className="company-budget-form" onSubmit={(event) => void saveCompanyBudget(event)}>
+              <label>
+                <span>Exercice</span>
+                <input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={companyBudgetYear}
+                  onChange={(event) => setCompanyBudgetYear(Number(event.target.value))}
+                  required
+                />
+              </label>
+              <label>
+                <span>Enveloppe annuelle (FCFA)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={companyBudgetAmount}
+                  onChange={(event) => setCompanyBudgetAmount(event.target.value)}
+                  placeholder="À définir après arbitrage"
+                  required
+                />
+              </label>
+              <label className="company-budget-notes">
+                <span>Hypothèses / périmètre</span>
+                <input
+                  value={companyBudgetNotes}
+                  onChange={(event) => setCompanyBudgetNotes(event.target.value)}
+                  maxLength={2000}
+                  placeholder="Frais généraux inclus, décision de direction…"
+                />
+              </label>
+              <button className="module-primary" type="submit" disabled={companyBudgetSaving}>
+                <Icon name="check" />
+                {companyBudgetSaving ? "Enregistrement…" : "Enregistrer le budget annuel"}
+              </button>
+            </form>
+          ) : (
+            <div className="company-budget-readonly">
+              <strong>
+                {companyOperatingBudget?.amountFcfa === null ||
+                companyOperatingBudget?.amountFcfa === undefined
+                  ? "Non défini"
+                  : formatFcfa(Number(companyOperatingBudget.amountFcfa))}
+              </strong>
+              <span>Exercice {companyOperatingBudget?.fiscalYear ?? companyBudgetYear}</span>
+              {companyOperatingBudget?.notes && <p>{companyOperatingBudget.notes}</p>}
+            </div>
+          )}
+        </section>
         <div className="cash-metrics">
           <div>
-            <span>Budget total</span>
-            <strong>{formatFcfa(budgetFcfa)}</strong>
-            <small>Budgets contractuels des chantiers</small>
+            <span>Coûts prévus</span>
+            <strong>{formatFcfa(costBudgetFcfa)}</strong>
+            <small>Somme des enveloppes de coûts des chantiers</small>
           </div>
           <div>
             <span>Engagé</span>
             <strong>{formatFcfa(engagedFcfa)}</strong>
             <small>
-              {budgetFcfa
-                ? `${Math.round((engagedFcfa / budgetFcfa) * 100)}% du budget`
+              {costBudgetFcfa
+                ? `${Math.round((engagedFcfa / costBudgetFcfa) * 100)}% des coûts prévus`
                 : "Aucun engagement"}
             </small>
           </div>
@@ -4348,7 +4742,7 @@ function ModuleView({
             <span>Reste disponible</span>
             <strong>{formatFcfa(remainingFcfa)}</strong>
             <small className={remainingFcfa >= 0 ? "positive" : "danger-text"}>
-              {remainingFcfa >= 0 ? "Budget restant" : "Dépassement du budget"}
+              {remainingFcfa >= 0 ? "Enveloppe disponible" : "Dépassement des coûts prévus"}
             </small>
           </div>
           <div className="cash-alert">
@@ -4360,6 +4754,58 @@ function ModuleView({
             <small>Sorties de trésorerie</small>
           </div>
         </div>
+        <section className="data-panel budget-panel">
+          <div className="panel__heading">
+            <div>
+              <h3>Enveloppes de coûts par chantier</h3>
+              <p>
+                Comparez les coûts prévus de chaque chantier aux engagements qui lui sont affectés. Le montant contractuel client est suivi séparément.
+              </p>
+            </div>
+          </div>
+          {!loadingData && sites.length === 0 && (
+            <p>Aucun chantier disponible pour cette entreprise.</p>
+          )}
+          {sites.map((site) => {
+            const siteBudget = site.costBudgetFcfa === null ? null : Number(site.costBudgetFcfa)
+            const siteEngaged = engagementBySite.get(site.id) ?? 0
+            const siteRatio = siteBudget ? (siteEngaged / siteBudget) * 100 : null
+            return (
+              <article className="budget-row" key={site.id}>
+                <div>
+                  <strong>{site.name}</strong>
+                  <small>
+                    {site.status ?? "Statut non défini"} ·{" "}
+                    {siteBudget === null ? "Enveloppe de coûts non définie" : `Coûts prévus ${formatFcfa(siteBudget)}`}
+                  </small>
+                </div>
+                <span>
+                  <small>Engagé</small>
+                  {formatFcfa(siteEngaged)}
+                </span>
+                <span>
+                  <small>Reste sur coûts prévus</small>
+                  {siteBudget === null
+                    ? "—"
+                    : formatFcfa(siteBudget - siteEngaged)}
+                </span>
+                <div className="budget-progress">
+                  <strong>
+                    {siteRatio === null ? "—" : `${Math.round(siteRatio)}%`}
+                  </strong>
+                  <div className="progress">
+                    <i
+                      className={siteRatio !== null && siteRatio > 100 ? "is-over-budget" : ""}
+                      style={{
+                        width: `${Math.min(100, siteRatio ?? 0)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </section>
         <section className="data-panel budget-panel">
           <div className="panel__heading">
             <div>
@@ -4388,20 +4834,20 @@ function ModuleView({
               </span>
               <span>
                 <small>Part du budget</small>
-                {budgetFcfa
-                  ? `${Math.round((amount / budgetFcfa) * 100)}%`
+                {costBudgetFcfa
+                  ? `${Math.round((amount / costBudgetFcfa) * 100)}%`
                   : "—"}
               </span>
               <div className="budget-progress">
                 <strong>
-                  {budgetFcfa
-                    ? `${Math.round((amount / budgetFcfa) * 100)}%`
+                  {costBudgetFcfa
+                    ? `${Math.round((amount / costBudgetFcfa) * 100)}%`
                     : "—"}
                 </strong>
                 <div className="progress">
                   <i
                     style={{
-                      width: `${Math.min(100, budgetFcfa ? (amount / budgetFcfa) * 100 : 0)}%`,
+                      width: `${Math.min(100, costBudgetFcfa ? (amount / costBudgetFcfa) * 100 : 0)}%`,
                     }}
                   />
                 </div>
@@ -4415,6 +4861,47 @@ function ModuleView({
               >
                 <Icon name="chevron" />
               </button>
+            </article>
+          ))}
+        </section>
+        <section className="data-panel dossier-list">
+          <div className="panel__heading">
+            <div>
+              <h3>Détail des engagements</h3>
+              <p>Les engagements prévisionnels restent modifiables et tracés.</p>
+            </div>
+          </div>
+          {!loadingData && engagementEntries.length === 0 && (
+            <p>Aucun engagement budgétaire enregistré.</p>
+          )}
+          {engagementEntries.map((entry) => (
+            <article key={entry.id}>
+              <strong>{entry.category}</strong>
+              <span>{entry.siteName} · {entry.description}</span>
+              <b>{formatFcfa(Number(entry.amountFcfa))}</b>
+              <small>{entry.status}</small>
+              {entry.status === "prévu" &&
+                (can("manage_finance") || can("manage_finance_planning")) ? (
+                <button
+                  className="row-action"
+                  aria-label={`Modifier l’engagement ${entry.category}`}
+                  onClick={() =>
+                    openAction(
+                      "budget",
+                      `Modifier l’engagement ${entry.category}`,
+                      entry.id,
+                      {
+                        "Poste budgétaire": entry.category,
+                        Description: entry.description,
+                        "Montant engagé FCFA": String(entry.amountFcfa),
+                        siteId: entry.siteId,
+                      },
+                    )
+                  }
+                >
+                  <Icon name="settings" />
+                </button>
+              ) : <span />}
             </article>
           ))}
         </section>
@@ -4448,13 +4935,18 @@ function ModuleView({
         )}
         <SectionHeader
           eyebrow="Facturation travaux"
-          title="Dossiers de paiement"
-          description="Préparez les situations et suivez leur état de traitement jusqu’au règlement."
-          action="Nouveau dossier"
+          title="Situations clients à encaisser"
+          description="Préparez les créances liées aux travaux et suivez leur instruction jusqu’à l’encaissement."
+          action="Nouvelle situation"
           icon="plus"
-          showAction={can("manage_finance")}
-          onAction={() => openAction("payment", "Créer un dossier de paiement")}
+          showAction={can("manage_finance") || can("manage_finance_planning")}
+          onAction={() => openAction("payment", "Créer une situation client")}
         />
+        {can("manage_finance_planning") && !can("manage_finance") && (
+          <div className="finance-role-notice">
+            L’Admin entreprise prépare les dossiers. Le Comptable est responsable de leur transmission, du suivi de statut et de la confirmation du paiement.
+          </div>
+        )}
         <div className="task-summary">
           <div>
             <span>En préparation</span>
@@ -4481,7 +4973,7 @@ function ModuleView({
             </small>
           </div>
           <div>
-            <span>Payés</span>
+            <span>Encaissés</span>
             <strong>{paid.length}</strong>
             <small>
               {formatFcfa(
@@ -4512,6 +5004,9 @@ function ModuleView({
             message de relance n’est envoyé automatiquement par la plateforme.
           </p>
         </div>
+        <div className="finance-role-notice">
+          Ces situations représentent les montants dus par les clients. Les factures fournisseurs à payer sont gérées séparément dans « Factures fournisseurs ».
+        </div>
         <section className="data-panel payment-table">
           <div className="table-head">
             <span>Référence</span>
@@ -4535,10 +5030,37 @@ function ModuleView({
                   {payment.dueDate
                     ? ` · Échéance ${new Date(`${payment.dueDate}T12:00:00`).toLocaleDateString("fr-FR")}`
                     : ""}
+                  {payment.paymentReference
+                    ? ` · Réf. encaissement ${payment.paymentReference}`
+                    : ""}
                 </small>
               </div>
               <span>{payment.siteName}</span>
-              <span>{payment.subject}</span>
+              <span>
+                {payment.subject}
+                {payment.status === "En préparation" &&
+                  (can("manage_finance") || can("manage_finance_planning")) && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() =>
+                        openAction(
+                          "payment",
+                          `Modifier le dossier ${payment.reference}`,
+                          payment.id,
+                          {
+                            "Objet du dossier": payment.subject,
+                            "Montant FCFA": String(payment.amountFcfa),
+                            "Date limite": payment.dueDate ?? "",
+                            siteId: payment.siteId,
+                          },
+                        )
+                      }
+                    >
+                      Modifier
+                    </button>
+                  )}
+              </span>
               <strong>{formatFcfa(Number(payment.amountFcfa))}</strong>
               <select
                 className="payment-status"
@@ -4548,17 +5070,25 @@ function ModuleView({
                   !can("manage_finance") ||
                   statusOptions[payment.status].length === 0
                 }
-                onChange={(event) =>
-                  void updatePaymentStatus(
-                    payment,
-                    event.target.value as PaymentDossierStatus,
-                  )
-                }
+                onChange={(event) => {
+                  const status = event.target.value as PaymentDossierStatus
+                  if (status === "Payé") {
+                    openAction(
+                      "paymentReceipt",
+                      `Confirmer l’encaissement ${payment.reference}`,
+                      payment.id,
+                    )
+                  } else {
+                    void updatePaymentStatus(payment, status)
+                  }
+                }}
               >
-                <option value={payment.status}>{payment.status}</option>
+                <option value={payment.status}>
+                  {payment.status === "Payé" ? "Encaissé" : payment.status}
+                </option>
                 {statusOptions[payment.status].map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {status === "Payé" ? "Encaissé" : status}
                   </option>
                 ))}
               </select>
@@ -4587,14 +5117,19 @@ function ModuleView({
         <SectionHeader
           eyebrow="Pilotage financier"
           title="Trésorerie"
-          description="Anticipez les encaissements et identifiez les tensions avant qu’elles n’arrivent."
-          action="Nouvel encaissement"
+          description="Suivez les prévisions et les mouvements réellement constatés, sans confondre trésorerie prévue et encaissée."
+          action="Prévoir une opération"
           icon="plus"
-          showAction={can("manage_finance")}
+          showAction={can("manage_finance") || can("manage_finance_planning")}
           onAction={() =>
             openAction("treasury", "Enregistrer une opération de trésorerie")
           }
         />
+        {can("manage_finance_planning") && !can("manage_finance") && (
+          <div className="finance-role-notice">
+            Vous pouvez enregistrer une prévision d’encaissement ou de dépense. Seul le Comptable peut confirmer qu’une opération a été réalisée.
+          </div>
+        )}
         <div className="cash-metrics">
           <div>
             <span>À encaisser</span>
@@ -4685,6 +5220,156 @@ function ModuleView({
                   <Icon name="check" />
                 </button>
               )}
+              {entry.status === "prévu" &&
+                (can("manage_finance") || can("manage_finance_planning")) && (
+                  <button
+                    className="row-action"
+                    aria-label={`Modifier la prévision : ${entry.description}`}
+                    onClick={() =>
+                      openAction(
+                        "treasury",
+                        `Modifier la prévision : ${entry.description}`,
+                        entry.id,
+                        {
+                          Description: entry.description,
+                          "Montant FCFA": String(entry.amountFcfa),
+                          Échéance: entry.dueDate ?? "",
+                          entryType: entry.entryType,
+                          siteId: entry.siteId,
+                        },
+                      )
+                    }
+                  >
+                    <Icon name="settings" />
+                  </button>
+                )}
+            </article>
+          ))}
+        </section>
+      </div>
+    )
+  }
+
+  if (active === "Factures fournisseurs") {
+    const payable = supplierInvoices.filter(
+      (invoice) => invoice.status === "Approuvée",
+    )
+    const underReview = supplierInvoices.filter(
+      (invoice) => invoice.status === "À contrôler",
+    )
+    const paid = supplierInvoices.filter(
+      (invoice) => invoice.status === "Payée",
+    )
+    return (
+      <div className="module-page">
+        {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+        <SectionHeader
+          eyebrow="Achats et fournisseurs"
+          title="Factures fournisseurs"
+          description="Suivez les factures à payer séparément des situations de travaux à encaisser."
+          action="Enregistrer une facture"
+          icon="plus"
+          showAction={can("manage_finance") || can("manage_finance_planning")}
+          onAction={() => openAction("supplierInvoice", "Enregistrer une facture fournisseur")}
+        />
+        <div className="task-summary">
+          <div>
+            <span>À contrôler</span>
+            <strong>{underReview.length}</strong>
+            <small>{formatFcfa(underReview.reduce((sum, invoice) => sum + Number(invoice.amountFcfa), 0))}</small>
+          </div>
+          <div>
+            <span>Approuvées à payer</span>
+            <strong>{payable.length}</strong>
+            <small>{formatFcfa(payable.reduce((sum, invoice) => sum + Number(invoice.amountFcfa), 0))}</small>
+          </div>
+          <div>
+            <span>Payées</span>
+            <strong>{paid.length}</strong>
+            <small>{formatFcfa(paid.reduce((sum, invoice) => sum + Number(invoice.amountFcfa), 0))}</small>
+          </div>
+        </div>
+        <div className="finance-role-notice">
+          L’Admin prépare et soumet la facture avec sa pièce justificative hors plateforme. Le Comptable valide la facture et consigne la référence du paiement ; le règlement crée alors automatiquement la dépense réalisée du chantier.
+        </div>
+        <section className="data-panel supplier-invoice-list">
+          {loadingData ? (
+            <p role="status">Chargement des factures fournisseurs…</p>
+          ) : !dataError && supplierInvoices.length === 0 ? (
+            <p>Aucune facture fournisseur enregistrée.</p>
+          ) : null}
+          {supplierInvoices.map((invoice) => (
+            <article className="supplier-invoice-row" key={invoice.id}>
+              <div>
+                <strong>{invoice.supplierName}</strong>
+                <span>{invoice.invoiceReference} · {invoice.siteName}</span>
+                <small>{invoice.category}{invoice.description ? ` · ${invoice.description}` : ""}</small>
+              </div>
+              <div>
+                <strong>{formatFcfa(Number(invoice.amountFcfa))}</strong>
+                <small>
+                  {invoice.dueDate
+                    ? `À payer avant le ${new Date(`${invoice.dueDate}T12:00:00`).toLocaleDateString("fr-FR")}`
+                    : "Sans échéance saisie"}
+                </small>
+              </div>
+              <span className={`supplier-invoice-status supplier-invoice-status--${invoice.status === "Payée" ? "paid" : invoice.status === "Refusée" ? "rejected" : "pending"}`}>
+                {invoice.status}
+              </span>
+              <div className="supplier-invoice-actions">
+                {invoice.status === "En préparation" &&
+                  (can("manage_finance_planning") || can("manage_finance")) && (
+                    <>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          openAction("supplierInvoice", `Modifier ${invoice.invoiceReference}`, invoice.id, {
+                            Fournisseur: invoice.supplierName,
+                            "Référence de facture": invoice.invoiceReference,
+                            "Poste de dépense": invoice.category,
+                            Description: invoice.description,
+                            "Montant FCFA": String(invoice.amountFcfa),
+                            "Date de facture": invoice.invoiceDate ?? "",
+                            "Date limite de paiement": invoice.dueDate ?? "",
+                            siteId: invoice.siteId,
+                          })
+                        }
+                      >
+                        Modifier
+                      </button>
+                      {can("manage_finance_planning") && (
+                        <button className="text-button" type="button" onClick={() => void submitSupplierInvoice(invoice)}>
+                          Soumettre au Comptable
+                        </button>
+                      )}
+                    </>
+                  )}
+                {invoice.status === "À contrôler" && can("manage_finance") && (
+                  <>
+                    <button className="text-button" type="button" onClick={() => void updateSupplierInvoiceStatus(invoice, "Approuvée")}>
+                      Approuver
+                    </button>
+                    <button className="text-button danger-text" type="button" onClick={() => void updateSupplierInvoiceStatus(invoice, "Refusée")}>
+                      Refuser
+                    </button>
+                  </>
+                )}
+                {invoice.status === "Approuvée" && can("manage_finance") && (
+                  <button
+                    className="module-primary"
+                    type="button"
+                    onClick={() =>
+                      openAction("supplierInvoicePayment", `Enregistrer le paiement ${invoice.invoiceReference}`, invoice.id)
+                    }
+                  >
+                    Enregistrer le paiement
+                  </button>
+                )}
+                {invoice.status === "Payée" && invoice.paymentReference && (
+                  <small>Réf. paiement : {invoice.paymentReference}</small>
+                )}
+              </div>
             </article>
           ))}
         </section>
@@ -6350,6 +7035,8 @@ function RestrictedDashboard({
   const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(
     null,
   )
+  const [paymentDossiers, setPaymentDossiers] = useState<PaymentDossier[]>([])
+  const [supplierInvoices, setSupplierInvoices] = useState<SupplierInvoice[]>([])
   const [platformOverview, setPlatformOverview] =
     useState<PlatformOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -6366,7 +7053,17 @@ function RestrictedDashboard({
         setLoadError("")
         return
       }
-      const [siteRows, taskRows, reportRows, photoRows, teamRows, finance] =
+      const canReadFinance = user.capabilities.includes("manage_finance")
+      const [
+        siteRows,
+        taskRows,
+        reportRows,
+        photoRows,
+        teamRows,
+        finance,
+        paymentResult,
+        supplierInvoiceResult,
+      ] =
         await Promise.all([
           user.capabilities.some((capability) =>
             ["manage_sites", "manage_finance", "read_assigned"].includes(
@@ -6401,6 +7098,12 @@ function RestrictedDashboard({
           user.capabilities.includes("read_finance")
             ? api.finance()
             : Promise.resolve(null),
+          canReadFinance
+            ? api.paymentDossiers()
+            : Promise.resolve({ data: [] as PaymentDossier[], summary: [] }),
+          canReadFinance
+            ? api.supplierInvoices()
+            : Promise.resolve({ data: [] as SupplierInvoice[] }),
         ])
       if (!active) return
       setSites(siteRows)
@@ -6409,6 +7112,8 @@ function RestrictedDashboard({
       setPhotos(photoRows)
       setTeam(teamRows)
       setFinanceSummary(finance?.summary ?? null)
+      setPaymentDossiers(paymentResult.data)
+      setSupplierInvoices(supplierInvoiceResult.data)
       setLoading(false)
       setLoadError("")
     }
@@ -6440,6 +7145,36 @@ function RestrictedDashboard({
   const nextTask = tasks
     .filter((task) => task.dueDate && task.status !== "Terminée")
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))[0]
+  const today = new Date()
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+  const nextTaskIsOverdue = Boolean(
+    nextTask?.dueDate && nextTask.dueDate < todayKey,
+  )
+  const latestValidatedReport = [...validatedReports].sort((first, second) =>
+    second.reportDate.localeCompare(first.reportDate) ||
+    second.createdAt.localeCompare(first.createdAt),
+  )[0]
+  const reportsToday = reports.filter(
+    (report) => report.reportDate === todayKey,
+  ).length
+  const overdueTasks = tasks.filter(
+    (task) =>
+      task.dueDate !== null &&
+      task.dueDate < todayKey &&
+      task.status !== "Terminée",
+  )
+  const paymentDossiersInProgress = paymentDossiers.filter((dossier) =>
+    ["Prêt à transmettre", "En instruction", "À corriger"].includes(dossier.status),
+  )
+  const overduePaymentDossiers = paymentDossiersInProgress.filter(
+    (dossier) => dossier.dueDate !== null && dossier.dueDate < todayKey,
+  )
+  const approvedSupplierInvoices = supplierInvoices.filter(
+    (invoice) => invoice.status === "Approuvée",
+  )
+  const overdueSupplierInvoices = approvedSupplierInvoices.filter(
+    (invoice) => invoice.dueDate !== null && invoice.dueDate < todayKey,
+  )
   const formatDate = (date: string | null | undefined) => {
     if (!date) return "Non définie"
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -6449,6 +7184,17 @@ function RestrictedDashboard({
       ? "Non définie"
       : parsed.toLocaleDateString("fr-FR")
   }
+  const deliveryDaysRemaining = assignedSite?.endDate
+    ? Math.ceil(
+        (Date.parse(`${assignedSite.endDate}T00:00:00Z`) -
+          Date.parse(`${todayKey}T00:00:00Z`)) /
+          86_400_000,
+      )
+    : null
+  const deliveryIsOverdue =
+    deliveryDaysRemaining !== null &&
+    deliveryDaysRemaining < 0 &&
+    assignedSite?.status !== "Terminé"
   const compactFcfa = (value: string | undefined) =>
     value === undefined ? "—" : formatFcfa(Number(value))
 
@@ -6530,8 +7276,8 @@ function RestrictedDashboard({
           icon: "task",
           label: "Tâches à suivre",
           value: String(openTasks.length),
-          detail: `${completedTasks.length} terminée(s)`,
-          tone: "green",
+          detail: `${blockedTasks.length} bloquée(s) · ${overdueTasks.length} en retard`,
+          tone: blockedTasks.length > 0 || overdueTasks.length > 0 ? "red" : "green",
         },
         {
           icon: "clipboard",
@@ -6564,8 +7310,8 @@ function RestrictedDashboard({
           icon: "task",
           label: "Tâches à traiter",
           value: String(openTasks.length),
-          detail: `${blockedTasks.length} bloquée(s)`,
-          tone: "green",
+          detail: `${blockedTasks.length} bloquée(s) · ${overdueTasks.length} en retard`,
+          tone: blockedTasks.length > 0 || overdueTasks.length > 0 ? "red" : "green",
         },
         {
           icon: "camera",
@@ -6578,7 +7324,7 @@ function RestrictedDashboard({
           icon: "clipboard",
           label: "Rapports en attente",
           value: String(pendingReports.length),
-          detail: "À examiner par le conducteur",
+          detail: `${reportsToday} rapport(s) déposé(s) aujourd’hui`,
           tone: "red",
         },
       ]
@@ -6614,8 +7360,12 @@ function RestrictedDashboard({
           icon: "calendar",
           label: "Prochaine échéance",
           value: formatDate(nextTask?.dueDate),
-          detail: nextTask?.title ?? "Aucune tâche avec échéance",
-          tone: "green",
+          detail: nextTask
+            ? nextTaskIsOverdue
+              ? `En retard · ${nextTask.title}`
+              : nextTask.title
+            : "Aucune tâche avec échéance",
+          tone: nextTaskIsOverdue ? "red" : "green",
         },
       ]
       break
@@ -6627,8 +7377,8 @@ function RestrictedDashboard({
           icon: "task",
           label: "Missions à réaliser",
           value: String(openTasks.length),
-          detail: `${tasks.length} tâche(s) confiée(s) au total`,
-          tone: "blue",
+          detail: `${blockedTasks.length} bloquée(s) · ${overdueTasks.length} en retard`,
+          tone: blockedTasks.length > 0 || overdueTasks.length > 0 ? "red" : "blue",
         },
         {
           icon: "alert",
@@ -6650,42 +7400,50 @@ function RestrictedDashboard({
           icon: "calendar",
           label: "Prochaine échéance",
           value: formatDate(nextTask?.dueDate),
-          detail: nextTask?.title ?? "Aucune mission avec échéance",
-          tone: "blue",
+          detail: nextTask
+            ? nextTaskIsOverdue
+              ? `En retard · ${nextTask.title}`
+              : nextTask.title
+            : "Aucune mission avec échéance",
+          tone: nextTaskIsOverdue ? "red" : "blue",
         },
       ]
       break
     case "COMPTABLE":
       eyebrow = "Pilotage comptable"
       description =
-        "Gérez les encaissements, dépenses, dossiers de paiement et rapports validés de l’entreprise."
+        "Traitez les créances client, contrôlez les factures fournisseurs et suivez les mouvements de trésorerie."
       metrics = [
+        {
+          icon: "wallet",
+          label: "Dossiers clients à suivre",
+          value: String(paymentDossiersInProgress.length),
+          detail: overduePaymentDossiers.length
+            ? `${overduePaymentDossiers.length} en retard`
+            : `${formatFcfa(paymentDossiersInProgress.reduce((sum, item) => sum + Number(item.amountFcfa), 0))} en attente`,
+          tone: overduePaymentDossiers.length ? "red" : "green",
+        },
+        {
+          icon: "alert",
+          label: "Factures approuvées à payer",
+          value: String(approvedSupplierInvoices.length),
+          detail: overdueSupplierInvoices.length
+            ? `${overdueSupplierInvoices.length} en retard`
+            : formatFcfa(approvedSupplierInvoices.reduce((sum, item) => sum + Number(item.amountFcfa), 0)),
+          tone: overdueSupplierInvoices.length ? "red" : "orange",
+        },
         {
           icon: "wallet",
           label: "À encaisser",
           value: compactFcfa(financeSummary?.plannedReceiptsFcfa),
-          detail: "Encaissements prévus",
-          tone: "green",
-        },
-        {
-          icon: "wallet",
-          label: "Déjà encaissé",
-          value: compactFcfa(financeSummary?.receivedFcfa),
-          detail: "Encaissements réalisés",
+          detail: "Prévisions de trésorerie",
           tone: "blue",
         },
         {
           icon: "chart",
-          label: "Dépenses réalisées",
-          value: compactFcfa(financeSummary?.expensesFcfa),
-          detail: "Données financières entreprise",
-          tone: "orange",
-        },
-        {
-          icon: "clipboard",
-          label: "Rapports validés",
-          value: String(validatedReports.length),
-          detail: "Consultation en lecture seule",
+          label: "Trésorerie nette",
+          value: compactFcfa(financeSummary?.cashBalanceFcfa),
+          detail: `${compactFcfa(financeSummary?.expensesFcfa)} de dépenses réalisées`,
           tone: "green",
         },
       ]
@@ -6717,15 +7475,26 @@ function RestrictedDashboard({
           icon: "clipboard",
           label: "Rapports publiés",
           value: String(validatedReports.length),
-          detail: "Rapports validés",
+          detail: latestValidatedReport
+            ? `Dernière publication : ${formatDate(latestValidatedReport.reportDate)}`
+            : "Aucun rapport publié",
           tone: "blue",
         },
         {
           icon: "calendar",
           label: "Livraison prévue",
           value: formatDate(assignedSite?.endDate),
-          detail: "Échéance contractuelle",
-          tone: "green",
+          detail:
+            assignedSite?.status === "Terminé"
+              ? "Chantier terminé"
+              : deliveryDaysRemaining === null
+                ? "Aucune échéance communiquée"
+                : deliveryIsOverdue
+                  ? `Échéance dépassée de ${Math.abs(deliveryDaysRemaining)} jour${Math.abs(deliveryDaysRemaining) > 1 ? "s" : ""}`
+                  : deliveryDaysRemaining === 0
+                    ? "Échéance prévue aujourd’hui"
+                    : `Dans ${deliveryDaysRemaining} jour${deliveryDaysRemaining > 1 ? "s" : ""}`,
+          tone: deliveryIsOverdue ? "red" : "green",
         },
       ]
       break
@@ -6838,10 +7607,10 @@ function RestrictedDashboard({
                   "Prochaine échéance": "Mes tâches",
                 }
                 const accountantDestinations: Record<string, string> = {
+                  "Dossiers clients à suivre": "Dossiers de paiement",
+                  "Factures approuvées à payer": "Factures fournisseurs",
                   "À encaisser": "Trésorerie",
-                  "Déjà encaissé": "Trésorerie",
-                  "Dépenses réalisées": "Trésorerie",
-                  "Rapports validés": "Rapports",
+                  "Trésorerie nette": "Trésorerie",
                 }
                 const destination =
                   user.role === "EDITOR"
@@ -6879,7 +7648,7 @@ function RestrictedDashboard({
                 (section) => user.sections.includes(section),
               )
             : user.role === "CHEF_CHANTIER"
-              ? ["Mes tâches", "Rapports", "Pointage", "Photos"].filter(
+              ? ["Chantiers", "Mes tâches", "Équipe", "Rapports", "Pointage", "Photos"].filter(
                   (section) => user.sections.includes(section),
                 )
                 : user.role === "COMPAGNON"
@@ -6891,7 +7660,7 @@ function RestrictedDashboard({
                         (section) => user.sections.includes(section),
                       )
                       : user.role === "COMPTABLE"
-                        ? ["Dossiers de paiement", "Trésorerie", "Rapports"].filter(
+                        ? ["Dossiers de paiement", "Factures fournisseurs", "Trésorerie", "Rapports"].filter(
                             (section) => user.sections.includes(section),
                           )
             : user.sections
@@ -7077,21 +7846,97 @@ function Dashboard({
       if (action.id) {
         await api.updateSite(action.id, {
           name: values["Nom du chantier"] ?? "",
-          location: values.Localisation ?? "",
+          description: values["Description du projet"]?.trim() || null,
+          location: values["Adresse / quartier"]?.trim() ?? "",
+          city: values.Ville?.trim() || null,
+          province: values.Province?.trim() || null,
+          clientName: values["Maître d’ouvrage / client"]?.trim() || null,
+          workType: values["Nature des travaux"]?.trim() || null,
+          contractReference: values["Référence du marché"]?.trim() || null,
           status: (values.Statut ?? "En cours") as NonNullable<Site["status"]>,
-          progress: Number(values["Progression (%)"] ?? 0),
-          budgetFcfa: Number(values["Budget FCFA"] ?? 0),
+          costBudgetFcfa: Number(values["Enveloppe de coûts prévue (FCFA)"] ?? 0),
+          contractAmountFcfa: values["Montant contractuel facturé au client (FCFA)"]
+            ? Number(values["Montant contractuel facturé au client (FCFA)"])
+            : null,
           startDate: values["Date de début"] || null,
-          endDate: values["Date de fin"] || null,
+          endDate: values["Échéance prévisionnelle"] || null,
+          plannedDurationDays: values["Délai prévu (jours)"]
+            ? Number(values["Délai prévu (jours)"])
+            : null,
         })
       } else {
         await api.createSite({
           name: values["Nom du chantier"] ?? "",
-          location: values.Localisation ?? "",
+          description: values["Description du projet"]?.trim() || null,
+          location: values["Adresse / quartier"]?.trim() ?? "",
+          city: values.Ville?.trim() || null,
+          province: values.Province?.trim() || null,
+          clientName: values["Maître d’ouvrage / client"]?.trim() || null,
+          workType: values["Nature des travaux"]?.trim() || null,
+          contractReference: values["Référence du marché"]?.trim() || null,
+          status: (values.Statut ?? "En cours") as NonNullable<Site["status"]>,
+          costBudgetFcfa: Number(values["Enveloppe de coûts prévue (FCFA)"] ?? 0),
+          contractAmountFcfa: values["Montant contractuel facturé au client (FCFA)"]
+            ? Number(values["Montant contractuel facturé au client (FCFA)"])
+            : null,
+          startDate: values["Date de début"] || null,
+          endDate: values["Échéance prévisionnelle"] || null,
+          plannedDurationDays: values["Délai prévu (jours)"]
+            ? Number(values["Délai prévu (jours)"])
+            : null,
         })
       }
       setDataRevision((revision) => revision + 1)
       setToast(action.id ? "Chantier mis à jour." : "Chantier créé.")
+      return
+    }
+    if (action.kind === "supplierInvoice") {
+      const amountFcfa = Number(values["Montant FCFA"])
+      if (!Number.isSafeInteger(amountFcfa) || amountFcfa <= 0) {
+        throw new Error("Le montant de la facture doit être un entier positif en FCFA.")
+      }
+      const input = {
+        siteId: values.siteId ?? "",
+        supplierName: values.Fournisseur ?? "",
+        invoiceReference: values["Référence de facture"] ?? "",
+        category: values["Poste de dépense"] ?? "",
+        description: values.Description ?? "",
+        amountFcfa,
+        invoiceDate: values["Date de facture"] || null,
+        dueDate: values["Date limite de paiement"] || null,
+      }
+      if (action.id) {
+        await api.updateSupplierInvoice(action.id, input)
+      } else {
+        await api.createSupplierInvoice(input)
+      }
+      setDataRevision((revision) => revision + 1)
+      setToast(action.id ? "Facture fournisseur modifiée." : "Facture fournisseur enregistrée.")
+      return
+    }
+    if (action.kind === "paymentReceipt") {
+      if (!action.id) throw new Error("Dossier à encaisser introuvable.")
+      const updated = await api.updatePaymentDossierStatus(
+        action.id,
+        "Payé",
+        values["Référence d’encaissement"],
+      )
+      if (updated.status !== "Payé") {
+        throw new Error("L’encaissement n’a pas été confirmé par l’API.")
+      }
+      setDataRevision((revision) => revision + 1)
+      setToast("Encaissement enregistré et ajouté à la trésorerie.")
+      return
+    }
+    if (action.kind === "supplierInvoicePayment") {
+      if (!action.id) throw new Error("Facture à régler introuvable.")
+      await api.updateSupplierInvoiceStatus(
+        action.id,
+        "Payée",
+        values["Référence du paiement"],
+      )
+      setDataRevision((revision) => revision + 1)
+      setToast("Paiement fournisseur enregistré et dépense ajoutée à la trésorerie.")
       return
     }
     if (action.kind === "report") {
@@ -7189,13 +8034,14 @@ function Dashboard({
           "Le montant doit être un nombre entier positif en FCFA.",
         )
       }
-      await api.createFinanceEntry({
-        entryType:
-          action.kind === "budget"
-            ? "engagement"
-            : values.entryType === "depense"
-              ? "depense"
-              : "encaissement",
+      const entryType: FinanceEntry["entryType"] =
+        action.kind === "budget"
+          ? "engagement"
+          : values.entryType === "depense"
+            ? "depense"
+            : "encaissement"
+      const input = {
+        entryType,
         siteId: values.siteId ?? "",
         category:
           action.kind === "budget"
@@ -7209,12 +8055,19 @@ function Dashboard({
             : (values.Description ?? ""),
         amountFcfa: amount,
         dueDate: action.kind === "treasury" ? values.Échéance || null : null,
-      })
+      }
+      if (action.id) {
+        await api.updateFinanceEntry(action.id, input)
+      } else {
+        await api.createFinanceEntry(input)
+      }
       setDataRevision((revision) => revision + 1)
       setToast(
-        action.kind === "budget"
-          ? "Engagement budgétaire enregistré."
-          : "Opération de trésorerie enregistrée.",
+        action.id
+          ? "Prévision financière modifiée."
+          : action.kind === "budget"
+            ? "Engagement budgétaire enregistré."
+            : "Opération de trésorerie enregistrée.",
       )
       return
     }
@@ -7225,14 +8078,19 @@ function Dashboard({
           "Le montant doit être un nombre entier positif en FCFA.",
         )
       }
-      await api.createPaymentDossier({
+      const input = {
         siteId: values.siteId ?? "",
         subject: values["Objet du dossier"] ?? "",
         amountFcfa: amount,
         dueDate: values["Date limite"] || null,
-      })
+      }
+      if (action.id) {
+        await api.updatePaymentDossier(action.id, input)
+      } else {
+        await api.createPaymentDossier(input)
+      }
       setDataRevision((revision) => revision + 1)
-      setToast("Dossier de paiement créé.")
+      setToast(action.id ? "Dossier de paiement modifié." : "Dossier de paiement créé.")
       return
     }
     if (action.kind === "tenant") {

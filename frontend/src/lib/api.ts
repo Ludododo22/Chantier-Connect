@@ -1,4 +1,4 @@
-export type Capability = "manage_platform" | "manage_company" | "manage_team" | "manage_sites" | "manage_tasks" | "capture_photos" | "create_reports" | "validate_reports" | "clock_in" | "update_assigned_tasks" | "manage_finance" | "read_finance" | "read_company" | "read_assigned" | "read_team" | "read_validated_reports"
+export type Capability = "manage_platform" | "manage_company" | "manage_team" | "manage_sites" | "manage_tasks" | "capture_photos" | "create_reports" | "validate_reports" | "clock_in" | "update_assigned_tasks" | "manage_finance" | "manage_finance_planning" | "manage_company_budget" | "read_finance" | "read_company" | "read_assigned" | "read_team" | "read_validated_reports"
 
 export type UserRole = "EDITOR" | "ADMIN_ENTERPRISE" | "CONDUCTEUR" | "CHEF_CHANTIER" | "COMPAGNON" | "SOUS_TRAITANT" | "COMPTABLE" | "MAITRE_OUVRAGE"
 
@@ -57,17 +57,33 @@ export interface Site {
 
   name: string
 
+  description: string | null
+
   location: string | null
+
+  city: string | null
+
+  province: string | null
+
+  clientName: string | null
+
+  workType: string | null
+
+  contractReference: string | null
 
   status: "En cours" | "En pause" | "Terminé" | "Archivé" | null
 
   progress: number | null
 
-  budgetFcfa: string | null
+  costBudgetFcfa: string | null
+
+  contractAmountFcfa: string | null
 
   startDate: string | null
 
   endDate: string | null
+
+  plannedDurationDays: number | null
 
   teamCount: number | null
 
@@ -225,7 +241,7 @@ export interface FinanceEntry {
 }
 
 export interface FinanceSummary {
-  budgetFcfa: string
+  costBudgetFcfa: string
 
   engagedFcfa: string
 
@@ -497,6 +513,8 @@ export interface PaymentDossier {
 
   status: PaymentDossierStatus
 
+  paymentReference: string | null
+
   dueDate: string | null
 
   createdAt: string
@@ -510,6 +528,38 @@ export interface PaymentDossierSummary {
   count: number
 
   amountFcfa: string
+}
+
+export type SupplierInvoiceStatus =
+  | "En préparation"
+  | "À contrôler"
+  | "Approuvée"
+  | "Payée"
+  | "Refusée"
+
+export interface SupplierInvoice {
+  id: string
+  siteId: string
+  siteName: string
+  supplierName: string
+  invoiceReference: string
+  category: string
+  description: string
+  amountFcfa: string
+  invoiceDate: string | null
+  dueDate: string | null
+  status: SupplierInvoiceStatus
+  paymentReference: string | null
+  paidAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CompanyOperatingBudget {
+  fiscalYear: number
+  amountFcfa: string | null
+  notes: string
+  updatedAt: string | null
 }
 
 export const managedRoles: Array<{ value: ManagedRole; label: string }> = [
@@ -552,7 +602,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     if (error instanceof TypeError) {
       throw new ApiError(
-        "Le service est temporairement indisponible. Réessayez dans quelques instants.",
+        "API inaccessible. Vérifiez que le backend est démarré.",
         0,
       )
     }
@@ -566,7 +616,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const message =
       response.status >= 500
-        ? "Le service est temporairement indisponible. Réessayez dans quelques instants."
+        ? `Erreur interne de l’API (HTTP ${response.status}). Consultez les journaux du backend.`
         : typeof body === "object" &&
       body !== null &&
       "error" in body &&
@@ -721,11 +771,18 @@ export const api = {
   async createSite(input: {
     name: string
     location: string
+    description?: string | null
+    city?: string | null
+    province?: string | null
+    clientName?: string | null
+    workType?: string | null
+    contractReference?: string | null
     status?: NonNullable<Site["status"]>
-    progress?: number
-    budgetFcfa?: number
+    costBudgetFcfa?: number
+    contractAmountFcfa?: number | null
     startDate?: string | null
     endDate?: string | null
+    plannedDurationDays?: number | null
   }) {
     const result = await request<{ data: Site }>("/api/sites", {
       method: "POST",
@@ -738,11 +795,18 @@ export const api = {
   async updateSite(id: string, input: {
     name: string
     location: string
+    description: string | null
+    city: string | null
+    province: string | null
+    clientName: string | null
+    workType: string | null
+    contractReference: string | null
     status: NonNullable<Site["status"]>
-    progress: number
-    budgetFcfa: number
+    costBudgetFcfa: number
+    contractAmountFcfa: number | null
     startDate: string | null
     endDate: string | null
+    plannedDurationDays: number | null
   }) {
     const result = await request<{ data: Site }>(`/api/sites/${encodeURIComponent(id)}`, {
       method: "PATCH",
@@ -987,6 +1051,24 @@ export const api = {
     return result.data
   },
 
+  async updateFinanceEntry(
+    id: string,
+    input: {
+      entryType: FinanceEntry["entryType"]
+      siteId: string
+      category: string
+      description: string
+      amountFcfa: number
+      dueDate: string | null
+    },
+  ) {
+    const result = await request<{ data: FinanceEntry }>(
+      `/api/finance/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
   async realizeFinanceEntry(id: string) {
     const result = await request<{
       data: Pick<FinanceEntry, "id" | "status" | "occurredAt">
@@ -1008,6 +1090,88 @@ export const api = {
     )
   },
 
+  async supplierInvoices() {
+    return request<{ data: SupplierInvoice[] }>("/api/supplier-invoices")
+  },
+
+  async createSupplierInvoice(input: {
+    siteId: string
+    supplierName: string
+    invoiceReference: string
+    category: string
+    description: string
+    amountFcfa: number
+    invoiceDate: string | null
+    dueDate: string | null
+  }) {
+    const result = await request<{ data: SupplierInvoice }>(
+      "/api/supplier-invoices",
+      { method: "POST", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
+  async updateSupplierInvoice(
+    id: string,
+    input: {
+      siteId: string
+      supplierName: string
+      invoiceReference: string
+      category: string
+      description: string
+      amountFcfa: number
+      invoiceDate: string | null
+      dueDate: string | null
+    },
+  ) {
+    const result = await request<{ data: SupplierInvoice }>(
+      `/api/supplier-invoices/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
+  async submitSupplierInvoice(id: string) {
+    const result = await request<{ data: Pick<SupplierInvoice, "id" | "status"> }>(
+      `/api/supplier-invoices/${encodeURIComponent(id)}/submit`,
+      { method: "PATCH" },
+    )
+    return result.data
+  },
+
+  async updateSupplierInvoiceStatus(
+    id: string,
+    status: Extract<SupplierInvoiceStatus, "Approuvée" | "Payée" | "Refusée">,
+    paymentReference?: string,
+  ) {
+    const result = await request<{
+      data: Pick<SupplierInvoice, "id" | "status" | "paymentReference" | "paidAt">
+    }>(`/api/supplier-invoices/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, ...(paymentReference ? { paymentReference } : {}) }),
+    })
+    return result.data
+  },
+
+  async companyOperatingBudget(year = new Date().getFullYear()) {
+    const result = await request<{ data: CompanyOperatingBudget }>(
+      `/api/company-operating-budget?year=${year}`,
+    )
+    return result.data
+  },
+
+  async saveCompanyOperatingBudget(input: {
+    fiscalYear: number
+    amountFcfa: number
+    notes: string
+  }) {
+    const result = await request<{ data: CompanyOperatingBudget }>(
+      "/api/company-operating-budget",
+      { method: "PUT", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
   async createPaymentDossier(input: {
     siteId: string
 
@@ -1026,13 +1190,36 @@ export const api = {
     return result.data
   },
 
-  async updatePaymentDossierStatus(id: string, status: PaymentDossierStatus) {
+  async updatePaymentDossier(
+    id: string,
+    input: {
+      siteId: string
+      subject: string
+      amountFcfa: number
+      dueDate: string | null
+    },
+  ) {
+    const result = await request<{ data: PaymentDossier }>(
+      `/api/payments/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
+    return result.data
+  },
+
+  async updatePaymentDossierStatus(
+    id: string,
+    status: PaymentDossierStatus,
+    paymentReference?: string,
+  ) {
     const result = await request<{
-      data: Pick<PaymentDossier, "id" | "status" | "updatedAt">
+      data: Pick<PaymentDossier, "id" | "status" | "paymentReference" | "updatedAt">
     }>(`/api/payments/${encodeURIComponent(id)}/status`, {
       method: "PATCH",
 
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(paymentReference ? { paymentReference } : {}),
+      }),
     })
 
     return result.data
